@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 
-const API = "http://localhost:5000/api";
+const API = "https://subhams-backend.onrender.com";
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem("token"));
