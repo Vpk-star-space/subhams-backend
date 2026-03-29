@@ -77,19 +77,32 @@ function App() {
   }, [token]);
 
   useEffect(() => { fetchTransactions(); fetchMonthlyData(); fetchInsights(); }, [fetchTransactions, fetchMonthlyData, fetchInsights]);
-
-  // ================= ADD / UPDATE =================
+// ================= ADD / UPDATE =================
   const handleSubmit = async (type) => {
     if (!title || !amount) return alert("Enter title & amount");
     const url = editingId ? `${API}/transactions/${editingId}` : `${API}/transactions`;
     const method = editingId ? "PUT" : "POST";
     try {
-      const res = await fetch(url, { method: method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ title, amount: Number(amount), type, category, date }) });
-      if (res.ok) { setTitle(""); setAmount(""); setEditingId(null); setCategory("Other"); setDate(new Date().toISOString().split('T')[0]); clearFilters(); fetchMonthlyData(); fetchInsights(); } 
-      else { alert("Failed to save."); }
-    } catch (err) { alert("Network error."); }
+      const res = await fetch(url, { 
+        method: method, 
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, 
+        body: JSON.stringify({ title, amount: Number(amount), type, category, date }) 
+      });
+      
+      if (res.ok) { 
+        setTitle(""); setAmount(""); setEditingId(null); setCategory("Other"); 
+        setDate(new Date().toISOString().split('T')[0]); 
+        clearFilters(); fetchMonthlyData(); fetchInsights(); 
+      } else { 
+        // 🚀 THIS IS THE NEW DEBUG CODE
+        const errData = await res.json();
+        alert("BACKEND REJECTED THIS BECAUSE: " + errData.message); 
+      }
+    } catch (err) { 
+      // 🚀 THIS IS THE NEW DEBUG CODE
+      alert("CRITICAL ERROR: " + err.message); 
+    }
   };
-
   const handleEdit = (t) => { setTitle(t.title); setAmount(t.amount); setEditingId(t._id); setCategory(t.category || "Other"); setDate(t.date ? t.date.substring(0, 10) : new Date().toISOString().split('T')[0]); };
   const cancelEdit = () => { setTitle(""); setAmount(""); setEditingId(null); setCategory("Other"); setDate(new Date().toISOString().split('T')[0]); };
 
