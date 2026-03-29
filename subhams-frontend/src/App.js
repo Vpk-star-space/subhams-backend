@@ -48,27 +48,30 @@ function App() {
 
   const logout = () => { localStorage.removeItem("token"); setToken(null); setTransactions([]); setMonthlyChartData([]); setInsights(null); };
 
-  // ================= FETCH DATA =================
+  // ================= FETCH DATA (FIXED GHOST TOKEN BUG) =================
   const fetchTransactions = useCallback(async () => {
-    if (!token) return;
+    if (!token || token === "null" || token === "undefined") return;
     try {
       const res = await fetch(`${API}/transactions`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.status === 400 || res.status === 401 || res.status === 403) { logout(); return; } // Auto-logout if token is bad
       const data = await res.json(); if (Array.isArray(data)) setTransactions(data);
     } catch (err) { console.error(err); }
   }, [token]);
 
   const fetchMonthlyData = useCallback(async () => {
-    if (!token) return;
+    if (!token || token === "null" || token === "undefined") return;
     try {
       const res = await fetch(`${API}/transactions/monthly`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.status === 400 || res.status === 401 || res.status === 403) return;
       const data = await res.json(); if (Array.isArray(data)) setMonthlyChartData(data);
     } catch (err) { console.error(err); }
   }, [token]);
 
   const fetchInsights = useCallback(async () => {
-    if (!token) return;
+    if (!token || token === "null" || token === "undefined") return;
     try {
       const res = await fetch(`${API}/transactions/insights`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.status === 400 || res.status === 401 || res.status === 403) return;
       const data = await res.json(); setInsights(data);
     } catch (err) { console.error(err); }
   }, [token]);
@@ -184,7 +187,7 @@ function App() {
   };
 
   // ================= UI RENDER =================
-  if (!token) return (
+  if (!token || token === "null" || token === "undefined") return (
     <div style={{ ...styles.app, display: "flex", justifyContent: "center", alignItems: "center", padding: "40px 20px" }}>
       {/* 🚀 BILINGUAL LOGIN CARD UPGRADE */}
       <div style={{ ...styles.card, width: "600px", textAlign: "center", padding: "40px" }}>
