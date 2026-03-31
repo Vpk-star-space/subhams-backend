@@ -323,7 +323,12 @@ function App() {
       <footer style={styles.footer}>
         <p style={{ margin: "5px 0", fontWeight: "bold", color: "#475569" }}>Personal Money Management System</p>
         <p style={{ margin: "5px 0", fontSize: "0.9em" }}>Designed & Developed by</p><h3 style={{ margin: "10px 0", color: "#0f172a" }}>Venkata Pawan Kumar</h3>
-        <a href="https://www.instagram.com/venkata_b26?igsh=cW9mYXBibzA3cGZp" target="_blank" rel="noopener noreferrer" style={styles.instagramBtn}>📸 Connect on Instagram</a>
+       <a 
+  href="mailto:pavanvenkat63@gmail.com" 
+  style={styles.instagramBtn}
+>
+  📧 Contact via Email
+</a>
       </footer>
     </div>
   );
