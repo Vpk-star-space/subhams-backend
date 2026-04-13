@@ -329,6 +329,9 @@ function App() {
 >
   📧 Contact via Email
 </a>
+<p style={styles.footerContact}>
+                    Check out our other app: <a href="https://bhavyams-vendor-hub-vpk.vercel.app/" target="_blank" rel="noopener noreferrer" style={styles.footerLink}>Bhavyams VendorHub</a>
+                </p>
       </footer>
     </div>
   );
