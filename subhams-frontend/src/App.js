@@ -3,6 +3,53 @@ import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Ba
 
 const API = "https://subhams-backend.onrender.com/api";
 
+// ... existing imports ...
+
+function App() {
+  // 🚀 NEW: Maintenance Mode Toggle (Set to 'true' to lock the app, 'false' to open it)
+  const [isMaintenanceMode] = useState(true);
+
+  // ... your existing state variables (token, username, transactions, etc.) ...
+
+  // ================= STYLES =================
+  // (Keep your existing styles object here so the maintenance screen can use it)
+  const styles = {
+    app: { fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", backgroundColor: "#f8fafc", minHeight: "100vh" },
+    card: { backgroundColor: "white", padding: "25px", borderRadius: "12px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)", marginBottom: "25px" },
+    // ... rest of your styles ...
+  };
+
+  // 🚀 NEW: The Maintenance Screen UI (This blocks the rest of the app)
+  if (isMaintenanceMode) {
+    return (
+      <div style={{ ...styles.app, display: "flex", justifyContent: "center", alignItems: "center", padding: "40px 20px" }}>
+        <div style={{ ...styles.card, width: "650px", textAlign: "center", padding: "50px", borderTop: "6px solid #f59e0b" }}>
+          <h1 style={{ color: "#0f172a", marginBottom: "5px", fontSize: "2.5em" }}>🛠️ System Upgrade</h1>
+          <h2 style={{ color: "#f59e0b", marginTop: "0", fontWeight: "normal" }}>సిస్టమ్ అప్‌డేట్ జరుగుతోంది</h2>
+
+          <div style={{ backgroundColor: "#fffbeb", padding: "20px", borderRadius: "8px", marginTop: "30px", borderLeft: "4px solid #f59e0b", textAlign: "left" }}>
+            <p style={{ fontSize: "1.1em", color: "#334155", lineHeight: "1.6", margin: "0 0 15px 0" }}>
+              <b>We are upgrading Subhams PMMS with exciting new features!</b> <br/>
+              The server is currently under maintenance and will be ready in a few hours. Get ready to enjoy exploring the new features.
+            </p>
+            <p style={{ fontSize: "1.1em", color: "#334155", lineHeight: "1.6", margin: "0" }}>
+              <b>మేము శుభమ్స్ PMMS కు సరికొత్త ఫీచర్లను జోడిస్తున్నాము!</b> <br/>
+              ప్రస్తుతం సర్వర్ నిర్వహణలో ఉంది, కొద్ది గంటల్లో సిద్ధంగా ఉంటుంది. కొత్త ఫీచర్లను ఆస్వాదించడానికి సిద్ధంగా ఉండండి.
+            </p>
+          </div>
+
+          <div style={{ marginTop: "40px", display: "inline-block", padding: "10px 20px", backgroundColor: "#f1f5f9", borderRadius: "20px", color: "#64748b", fontWeight: "bold" }}>
+            ⏳ Please check back soon...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ================= UI RENDER =================
+  // If Maintenance Mode is FALSE, the normal login screen or dashboard will load below
+  if (!token || token === "null" || token === "undefined") return ( ... )
+
 function App() {
   const [token, setToken] = useState(localStorage.getItem("token"));
   const [username, setUsername] = useState("");
