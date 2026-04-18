@@ -302,7 +302,7 @@ function App() {
           {transactions.length === 0 ? <p style={{ color: "#94a3b8", fontStyle: "italic" }}>No transactions match your search.</p> : null}
           {transactions.map((t) => (
             <div key={t._id} style={styles.listItem}>
-              <div><b style={{ color: t.type === "income" ? "#10b981" : "#ef4444", fontSize: "1.2em" }}>{t.type === "income" ? "+ " : "- "}₹{t.amount}</b><span style={{ marginLeft: "15px", fontSize: "1.1em", color: "#334155" }}>{t.title}</span><span style={styles.badge}>{t.category || "Other"}</span><span style={styles.dateText}>📅 {t.date ? new Date(t.date).toLocaleDateString() : "No Date"}</span></div>
+              <div><b style={{ color: t.type === "income" ? "#10b981" : "#ef4444", fontSize: "1.2em" }}>{t.type === "income" ? "+ " : "- "}₹{t.amount}</b><span style={{ marginLeft: "15px", fontSize: "1.1em", color: "#334155" }}>{t.title}</span><span style={styles.badge}>{t.category || "Other"}</span><span style={styles.dateText}> {t.date ? new Date(t.date).toLocaleDateString() : "No Date"}</span></div>
               <div><button style={{ ...styles.btn, ...styles.btnEdit }} onClick={() => handleEdit(t)}>Edit</button><button style={{ ...styles.btn, ...styles.btnDanger }} onClick={() => deleteTransaction(t._id)}>Delete</button></div>
             </div>
           ))}
