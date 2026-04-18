@@ -202,27 +202,20 @@ function App() {
     instagramBtn: { backgroundColor: "#e1306c", color: "white", padding: "10px 20px", borderRadius: "20px", textDecoration: "none", fontWeight: "bold", display: "inline-block", marginTop: "15px" }
   };
 
-  // 🚀 MAINTENANCE MODE RENDER BLOCK (Added here properly inside the function)
+ // 🚀 MAINTENANCE MODE RENDER BLOCK (Updated with BIG SUBHAMS Text)
   if (isMaintenanceMode) {
     return (
       <div style={{ ...styles.app, display: "flex", justifyContent: "center", alignItems: "center", padding: "40px 20px" }}>
         <div style={{ ...styles.card, width: "650px", textAlign: "center", padding: "50px", borderTop: "6px solid #f59e0b" }}>
           
-          <div style={{ marginBottom: "20px", display: "flex", justifyContent: "center" }}>
-            <svg width="140" height="140" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="3" width="20" height="6" rx="2" ry="2" fill="#fffbeb"></rect>
-              <line x1="6" y1="6" x2="6.01" y2="6" strokeWidth="3"></line>
-              <line x1="10" y1="6" x2="18" y2="6"></line>
-              <rect x="2" y="15" width="20" height="6" rx="2" ry="2" fill="#fffbeb"></rect>
-              <line x1="6" y1="18" x2="6.01" y2="18" strokeWidth="3"></line>
-              <line x1="10" y1="18" x2="18" y2="18"></line>
-              <path d="M14.5 12.5l4.5-4.5-2-2-4.5 4.5" fill="#334155" stroke="#334155"></path>
-              <path d="M10 11a2.5 2.5 0 0 1 3.5 3.5L10 18l-3-3 3.5-3.5z" fill="#334155" stroke="#334155"></path>
-            </svg>
+          {/* 🚀 NEW: Massive Text Logo instead of the SVG graphic */}
+          <div style={{ marginBottom: "30px" }}>
+            <h1 style={{ fontSize: "4.5em", fontWeight: "900", color: "#f59e0b", margin: "0", letterSpacing: "2px", textTransform: "uppercase" }}>SUBHAMS</h1>
+            <p style={{ color: "#64748b", margin: "5px 0 0 0", fontSize: "1.2em", letterSpacing: "8px", fontWeight: "bold" }}>PMMS</p>
           </div>
 
-          <h1 style={{ color: "#0f172a", marginBottom: "5px", fontSize: "2.5em" }}>🛠️ System Upgrade</h1>
-          <h2 style={{ color: "#f59e0b", marginTop: "0", fontWeight: "normal" }}>సిస్టమ్ అప్‌డేట్ జరుగుతోంది</h2>
+          <h1 style={{ color: "#0f172a", marginBottom: "5px", fontSize: "2em" }}>🛠️ System Upgrade</h1>
+          <h2 style={{ color: "#f59e0b", marginTop: "0", fontWeight: "normal", fontSize: "1.3em" }}>సిస్టమ్ అప్‌డేట్ జరుగుతోంది</h2>
 
           <div style={{ backgroundColor: "#fffbeb", padding: "20px", borderRadius: "8px", marginTop: "30px", borderLeft: "4px solid #f59e0b", textAlign: "left" }}>
             <p style={{ fontSize: "1.1em", color: "#334155", lineHeight: "1.6", margin: "0 0 15px 0" }}>
