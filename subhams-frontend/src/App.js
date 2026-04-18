@@ -3,54 +3,11 @@ import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Ba
 
 const API = "https://subhams-backend.onrender.com/api";
 
-// ... existing imports ...
-
 function App() {
-  // 🚀 NEW: Maintenance Mode Toggle (Set to 'true' to lock the app, 'false' to open it)
+  // 🚀 THIS IS THE SWITCH! 
+  // Change 'true' to 'false' when you want to use the app normally!
   const [isMaintenanceMode] = useState(true);
 
-  // ... your existing state variables (token, username, transactions, etc.) ...
-
-  // ================= STYLES =================
-  // (Keep your existing styles object here so the maintenance screen can use it)
-  const styles = {
-    app: { fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", backgroundColor: "#f8fafc", minHeight: "100vh" },
-    card: { backgroundColor: "white", padding: "25px", borderRadius: "12px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)", marginBottom: "25px" },
-    // ... rest of your styles ...
-  };
-
-  // 🚀 NEW: The Maintenance Screen UI (This blocks the rest of the app)
-  if (isMaintenanceMode) {
-    return (
-      <div style={{ ...styles.app, display: "flex", justifyContent: "center", alignItems: "center", padding: "40px 20px" }}>
-        <div style={{ ...styles.card, width: "650px", textAlign: "center", padding: "50px", borderTop: "6px solid #f59e0b" }}>
-          <h1 style={{ color: "#0f172a", marginBottom: "5px", fontSize: "2.5em" }}>🛠️ System Upgrade</h1>
-          <h2 style={{ color: "#f59e0b", marginTop: "0", fontWeight: "normal" }}>సిస్టమ్ అప్‌డేట్ జరుగుతోంది</h2>
-
-          <div style={{ backgroundColor: "#fffbeb", padding: "20px", borderRadius: "8px", marginTop: "30px", borderLeft: "4px solid #f59e0b", textAlign: "left" }}>
-            <p style={{ fontSize: "1.1em", color: "#334155", lineHeight: "1.6", margin: "0 0 15px 0" }}>
-              <b>We are upgrading Subhams PMMS with exciting new features!</b> <br/>
-              The server is currently under maintenance and will be ready in a few hours. Get ready to enjoy exploring the new features.
-            </p>
-            <p style={{ fontSize: "1.1em", color: "#334155", lineHeight: "1.6", margin: "0" }}>
-              <b>మేము శుభమ్స్ PMMS కు సరికొత్త ఫీచర్లను జోడిస్తున్నాము!</b> <br/>
-              ప్రస్తుతం సర్వర్ నిర్వహణలో ఉంది, కొద్ది గంటల్లో సిద్ధంగా ఉంటుంది. కొత్త ఫీచర్లను ఆస్వాదించడానికి సిద్ధంగా ఉండండి.
-            </p>
-          </div>
-
-          <div style={{ marginTop: "40px", display: "inline-block", padding: "10px 20px", backgroundColor: "#f1f5f9", borderRadius: "20px", color: "#64748b", fontWeight: "bold" }}>
-            ⏳ Please check back soon...
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ================= UI RENDER =================
-  // If Maintenance Mode is FALSE, the normal login screen or dashboard will load below
-  if (!token || token === "null" || token === "undefined") return ( ... )
-
-function App() {
   const [token, setToken] = useState(localStorage.getItem("token"));
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -95,12 +52,12 @@ function App() {
 
   const logout = () => { localStorage.removeItem("token"); setToken(null); setTransactions([]); setMonthlyChartData([]); setInsights(null); };
 
-  // ================= FETCH DATA (FIXED GHOST TOKEN BUG) =================
+  // ================= FETCH DATA =================
   const fetchTransactions = useCallback(async () => {
     if (!token || token === "null" || token === "undefined") return;
     try {
       const res = await fetch(`${API}/transactions`, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.status === 400 || res.status === 401 || res.status === 403) { logout(); return; } // Auto-logout if token is bad
+      if (res.status === 400 || res.status === 401 || res.status === 403) { logout(); return; } 
       const data = await res.json(); if (Array.isArray(data)) setTransactions(data);
     } catch (err) { console.error(err); }
   }, [token]);
@@ -124,7 +81,8 @@ function App() {
   }, [token]);
 
   useEffect(() => { fetchTransactions(); fetchMonthlyData(); fetchInsights(); }, [fetchTransactions, fetchMonthlyData, fetchInsights]);
-// ================= ADD / UPDATE =================
+
+  // ================= ADD / UPDATE =================
   const handleSubmit = async (type) => {
     if (!title || !amount) return alert("Enter title & amount");
     const url = editingId ? `${API}/transactions/${editingId}` : `${API}/transactions`;
@@ -141,15 +99,14 @@ function App() {
         setDate(new Date().toISOString().split('T')[0]); 
         clearFilters(); fetchMonthlyData(); fetchInsights(); 
       } else { 
-        // 🚀 THIS IS THE NEW DEBUG CODE
         const errData = await res.json();
         alert("BACKEND REJECTED THIS BECAUSE: " + errData.message); 
       }
     } catch (err) { 
-      // 🚀 THIS IS THE NEW DEBUG CODE
       alert("CRITICAL ERROR: " + err.message); 
     }
   };
+
   const handleEdit = (t) => { setTitle(t.title); setAmount(t.amount); setEditingId(t._id); setCategory(t.category || "Other"); setDate(t.date ? t.date.substring(0, 10) : new Date().toISOString().split('T')[0]); };
   const cancelEdit = () => { setTitle(""); setAmount(""); setEditingId(null); setCategory("Other"); setDate(new Date().toISOString().split('T')[0]); };
 
@@ -186,7 +143,6 @@ function App() {
   const pieData = [ { name: "Income", value: income }, { name: "Expense", value: expense } ];
   const chartColors = ["#10b981", "#ef4444"]; 
 
-  // 🚀 BILINGUAL AI INSIGHT LOGIC (English + Telugu)
   let smartMessage = null;
   let smartMessageTe = null;
   let insightColor = "#3b82f6"; 
@@ -246,10 +202,50 @@ function App() {
     instagramBtn: { backgroundColor: "#e1306c", color: "white", padding: "10px 20px", borderRadius: "20px", textDecoration: "none", fontWeight: "bold", display: "inline-block", marginTop: "15px" }
   };
 
-  // ================= UI RENDER =================
+  // 🚀 MAINTENANCE MODE RENDER BLOCK (Added here properly inside the function)
+  if (isMaintenanceMode) {
+    return (
+      <div style={{ ...styles.app, display: "flex", justifyContent: "center", alignItems: "center", padding: "40px 20px" }}>
+        <div style={{ ...styles.card, width: "650px", textAlign: "center", padding: "50px", borderTop: "6px solid #f59e0b" }}>
+          
+          <div style={{ marginBottom: "20px", display: "flex", justifyContent: "center" }}>
+            <svg width="140" height="140" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="3" width="20" height="6" rx="2" ry="2" fill="#fffbeb"></rect>
+              <line x1="6" y1="6" x2="6.01" y2="6" strokeWidth="3"></line>
+              <line x1="10" y1="6" x2="18" y2="6"></line>
+              <rect x="2" y="15" width="20" height="6" rx="2" ry="2" fill="#fffbeb"></rect>
+              <line x1="6" y1="18" x2="6.01" y2="18" strokeWidth="3"></line>
+              <line x1="10" y1="18" x2="18" y2="18"></line>
+              <path d="M14.5 12.5l4.5-4.5-2-2-4.5 4.5" fill="#334155" stroke="#334155"></path>
+              <path d="M10 11a2.5 2.5 0 0 1 3.5 3.5L10 18l-3-3 3.5-3.5z" fill="#334155" stroke="#334155"></path>
+            </svg>
+          </div>
+
+          <h1 style={{ color: "#0f172a", marginBottom: "5px", fontSize: "2.5em" }}>🛠️ System Upgrade</h1>
+          <h2 style={{ color: "#f59e0b", marginTop: "0", fontWeight: "normal" }}>సిస్టమ్ అప్‌డేట్ జరుగుతోంది</h2>
+
+          <div style={{ backgroundColor: "#fffbeb", padding: "20px", borderRadius: "8px", marginTop: "30px", borderLeft: "4px solid #f59e0b", textAlign: "left" }}>
+            <p style={{ fontSize: "1.1em", color: "#334155", lineHeight: "1.6", margin: "0 0 15px 0" }}>
+              <b>We are upgrading Subhams PMMS with exciting new features!</b> <br/>
+              The server is currently under maintenance and will be ready in a few hours. Get ready to enjoy exploring the new features.
+            </p>
+            <p style={{ fontSize: "1.1em", color: "#334155", lineHeight: "1.6", margin: "0" }}>
+              <b>మేము శుభమ్స్ PMMS కు సరికొత్త ఫీచర్లను జోడిస్తున్నాము!</b> <br/>
+              ప్రస్తుతం సర్వర్ నిర్వహణలో ఉంది, కొద్ది గంటల్లో సిద్ధంగా ఉంటుంది. కొత్త ఫీచర్లను ఆస్వాదించడానికి సిద్ధంగా ఉండండి.
+            </p>
+          </div>
+
+          <div style={{ marginTop: "40px", display: "inline-block", padding: "10px 20px", backgroundColor: "#f1f5f9", borderRadius: "20px", color: "#64748b", fontWeight: "bold" }}>
+            ⏳ Please check back soon...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ================= NORMAL UI RENDER =================
   if (!token || token === "null" || token === "undefined") return (
     <div style={{ ...styles.app, display: "flex", justifyContent: "center", alignItems: "center", padding: "40px 20px" }}>
-      {/* 🚀 BILINGUAL LOGIN CARD UPGRADE */}
       <div style={{ ...styles.card, width: "600px", textAlign: "center", padding: "40px" }}>
         <h1 style={{ color: "#0f172a", margin: "0 0 5px 0" }}>🏦 Subhams PMMS</h1>
         <h3 style={{ color: "#64748b", margin: "0 0 25px 0", fontWeight: "normal" }}>Personal Money Management System</h3>
@@ -276,7 +272,6 @@ function App() {
 
       <div style={styles.container}>
         
-        {/* 🚀 BILINGUAL SUMMARY BOX */}
         <div style={styles.summaryBox}>
           <div>
             <div style={{ color: "#64748b", fontSize: "0.8em" }}>TOTAL INCOME <br/><span style={{fontSize: "1.3em", color: "#1e293b"}}>ఆదాయం</span></div>
@@ -292,7 +287,6 @@ function App() {
           </div>
         </div>
 
-        {/* 🚀 BILINGUAL AI SMART INSIGHTS */}
         {smartMessage && (
           <div style={{ ...styles.insightBanner, background: insightBg, borderLeftColor: insightColor, color: insightColor }}>
             <div>{insightEmoji} &nbsp;<b>Subhams for You:</b> &nbsp;{smartMessage}</div>
@@ -376,8 +370,8 @@ function App() {
 >
   📧 Contact via Email
 </a>
-<p style={styles.footerContact}>
-                    Check out our other app: <a href="https://bhavyams-vendor-hub-vpk.vercel.app/" target="_blank" rel="noopener noreferrer" style={styles.footerLink}>Bhavyams VendorHub</a>
+<p style={{ marginTop: "15px", fontSize: "0.9em" }}>
+                    Check out our other app: <a href="https://bhavyams-vendor-hub-vpk.vercel.app/" target="_blank" rel="noopener noreferrer" style={{ color: "#3b82f6", textDecoration: "none", fontWeight: "bold" }}>Bhavyams VendorHub</a>
                 </p>
       </footer>
     </div>
@@ -385,3 +379,4 @@ function App() {
 }
 
 export default App;
+  
