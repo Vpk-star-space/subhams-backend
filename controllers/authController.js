@@ -22,9 +22,12 @@ const googleLogin = async (req, res) => {
     let user = userResult.rows[0];
 
     if (!user) {
+      // Create a unique username from their email (e.g., "pavanvenkat63")
+      const safeUsername = email.split("@")[0]; 
+
       const newUser = await pool.query(
         "INSERT INTO users (username, email, password, auth_provider) VALUES ($1, $2, $3, $4) RETURNING *",
-        [name, email, "google_authenticated", "google"]
+        [safeUsername, email, "google_authenticated", "google"]
       );
       user = newUser.rows[0];
 
@@ -32,11 +35,15 @@ const googleLogin = async (req, res) => {
       sendWelcomeEmail(email, name).catch(err => console.error("Welcome email failed:", err));
     }
 
-    await pool.query("UPDATE users SET last_active = NOW() WHERE id = $1", [user.id]);
-
-    // 🚀 FIXED: Tokens now last 7 days
+    // Generate Tokens
     const accessToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "7d" });
     const refreshToken = jwt.sign({ userId: user.id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: "30d" });
+
+    // UPDATE BOTH last_active AND refresh_token!
+    await pool.query(
+      "UPDATE users SET last_active = NOW(), refresh_token = $1 WHERE id = $2", 
+      [refreshToken, user.id]
+    );
 
     res.json({ accessToken, refreshToken, user: { username: user.username, email: user.email } });
 
@@ -45,7 +52,6 @@ const googleLogin = async (req, res) => {
     res.status(400).json({ error: "Google authentication failed" });
   }
 };
-
 // ================= 2. REGISTER (SEND OTP) =================
 const registerUser = async (req, res) => {
   try {
