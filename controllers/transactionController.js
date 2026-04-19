@@ -1,165 +1,201 @@
-const Transaction = require("../models/Transaction");
-const mongoose = require("mongoose");
+const pool = require("../config/db");
 
-// ADD
+// ================= 1. ADD TRANSACTION =================
 exports.addTransaction = async (req, res) => {
   try {
-    const data = await Transaction.create({ ...req.body, user: req.user.userId });
-    res.status(201).json(data);
-  } catch (error) { res.status(400).json({ message: error.message }); }
-};
+    const { title, amount, type, category, date } = req.body;
+    const userId = req.user.userId;
 
-// GET ALL
-exports.getTransactions = async (req, res) => {
-  try {
-    const data = await Transaction.find({ user: req.user.userId }).sort({ createdAt: -1 });
-    res.json(data);
-  } catch (error) { res.status(500).json({ message: error.message }); }
-};
+    const result = await pool.query(
+      `INSERT INTO transactions (user_id, title, amount, type, category, date) 
+       VALUES ($1, $2, $3, $4, $5, $6) 
+       RETURNING *, id AS "_id"`, // We return 'id AS _id' so React doesn't break
+      [userId, title, amount, type, category, date]
+    );
 
-// ================= FILTER TRANSACTIONS =================
-exports.filterTransactions = async (req, res) => {
-  try {
-    const { type, category, startDate, endDate } = req.query;
-    let query = { user: req.user.userId };
-
-    // If the user selected a specific type (and not "All"), add it to the search
-    if (type && type !== "All") query.type = type;
-    
-    // If the user selected a specific category (and not "All"), add it to the search
-    if (category && category !== "All") query.category = category;
-    
-    // If the user picked a date range, search between those dates
-    if (startDate && endDate) {
-      query.date = { 
-        $gte: new Date(startDate), 
-        $lte: new Date(endDate) 
-      };
-    }
-
-    const data = await Transaction.find(query).sort({ date: -1 });
-    res.json(data);
-  } catch (error) { 
-    res.status(500).json({ message: error.message }); 
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
   }
 };
 
-
-// SUMMARY
-exports.getSummary = async (req, res) => {
+// ================= 2. GET ALL TRANSACTIONS =================
+exports.getTransactions = async (req, res) => {
   try {
-    const data = await Transaction.find({ user: req.user.userId });
-    let income = 0, expense = 0;
-    data.forEach(t => {
-      if (t.type === "income") income += Number(t.amount);
-      else expense += Number(t.amount);
-    });
-    res.json({ income, expense, balance: income - expense });
-  } catch (error) { res.status(500).json({ message: error.message }); }
+    const result = await pool.query(
+      `SELECT *, id AS "_id" FROM transactions 
+       WHERE user_id = $1 
+       ORDER BY date DESC, created_at DESC`,
+      [req.user.userId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };
 
-// INTEREST
+// ================= 3. FILTER & SEARCH TRANSACTIONS =================
+exports.filterTransactions = async (req, res) => {
+  try {
+    // 🚀 NEW: Notice we added 'search' here to catch what the frontend sends!
+    const { type, category, startDate, endDate, search } = req.query;
+    
+    let query = `SELECT *, id AS "_id" FROM transactions WHERE user_id = $1`;
+    let values = [req.user.userId];
+    let count = 2; 
+
+    // 1. Dropdown Filters
+    if (type && type !== "All") {
+      query += ` AND type = $${count}`;
+      values.push(type);
+      count++;
+    }
+    if (category && category !== "All") {
+      query += ` AND category = $${count}`;
+      values.push(category);
+      count++;
+    }
+    
+    // 2. Date Range Filter
+    if (startDate && endDate) {
+      query += ` AND date >= $${count} AND date <= $${count + 1}`;
+      values.push(startDate, endDate);
+      count += 2;
+    }
+
+    // 3. 🚀 THE SEARCH BAR LOGIC
+    // ILIKE makes it case-insensitive (so "Rent" and "rent" both work)
+    // CAST(amount AS TEXT) allows them to search for numbers like "500"
+    if (search && search.trim() !== "") {
+      query += ` AND (title ILIKE $${count} OR CAST(amount AS TEXT) ILIKE $${count})`;
+      values.push(`%${search.trim()}%`);
+      count++;
+    }
+
+    query += ` ORDER BY date DESC`;
+    
+    const result = await pool.query(query, values);
+    res.json(result.rows);
+    
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ================= 4. SUMMARY =================
+exports.getSummary = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS income,
+        COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS expense
+      FROM transactions 
+      WHERE user_id = $1
+    `, [req.user.userId]);
+
+    const income = Number(result.rows[0].income);
+    const expense = Number(result.rows[0].expense);
+
+    res.json({ income, expense, balance: income - expense });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ================= 5. UPDATE =================
+exports.updateTransaction = async (req, res) => {
+  try {
+    const { title, amount, type, category, date } = req.body;
+    const result = await pool.query(
+      `UPDATE transactions 
+       SET title = $1, amount = $2, type = $3, category = $4, date = $5 
+       WHERE id = $6 AND user_id = $7 
+       RETURNING *, id AS "_id"`,
+      [title, amount, type, category, date, req.params.id, req.user.userId]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+// ================= 6. DELETE =================
+exports.deleteTransaction = async (req, res) => {
+  try {
+    const result = await pool.query(
+      "DELETE FROM transactions WHERE id = $1 AND user_id = $2 RETURNING *",
+      [req.params.id, req.user.userId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Transaction not found" });
+    }
+    res.json({ message: "Deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ================= 7. MONTHLY GRAPH DATA =================
+exports.getMonthlyData = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        EXTRACT(YEAR FROM date) AS year, 
+        EXTRACT(MONTH FROM date) AS month, 
+        type, 
+        SUM(amount) AS total 
+      FROM transactions 
+      WHERE user_id = $1 
+      GROUP BY year, month, type 
+      ORDER BY year, month
+    `, [req.user.userId]);
+
+    const formattedData = result.rows.reduce((acc, item) => {
+      const monthName = new Date(item.year, item.month - 1).toLocaleString('default', { month: 'short' });
+      const yearMonth = `${monthName} ${item.year}`;
+      let existingMonth = acc.find(m => m.name === yearMonth);
+      if (!existingMonth) {
+        existingMonth = { name: yearMonth, income: 0, expense: 0 };
+        acc.push(existingMonth);
+      }
+      if (item.type === "income") existingMonth.income = Number(item.total);
+      if (item.type === "expense") existingMonth.expense = Number(item.total);
+      return acc;
+    }, []);
+
+    res.json(formattedData);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ================= 8. SMART INSIGHTS =================
+exports.getInsights = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT category, SUM(amount) AS totalamount 
+      FROM transactions 
+      WHERE user_id = $1 AND type = 'expense'
+      GROUP BY category 
+      ORDER BY totalamount DESC LIMIT 1
+    `, [req.user.userId]);
+
+    if (result.rows.length > 0) {
+      res.json({ topCategory: result.rows[0].category, amount: Number(result.rows[0].totalamount) });
+    } else {
+      res.json({ topCategory: "None", amount: 0 });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ================= 9. INTEREST =================
 exports.calculateInterest = (req, res) => {
   const { principal, rate, time } = req.body;
   const interest = (Number(principal) * Number(rate) * Number(time)) / 100;
   res.json({ interest, total: Number(principal) + interest });
 };
 
-// ================= UPDATE =================
-exports.updateTransaction = async (req, res) => {
-  try {
-    const updated = await Transaction.findOneAndUpdate(
-      { _id: req.params.id, user: req.user.userId },
-      req.body,
-      { new: true }
-    );
-    res.json(updated);
-  } catch (error) { res.status(400).json({ message: error.message }); }
-};
-
-// ================= DELETE =================
-exports.deleteTransaction = async (req, res) => {
-  try {
-    const deleted = await Transaction.findByIdAndDelete(req.params.id);
-    if (!deleted) {
-      return res.status(404).json({ message: "Transaction not found in Database" });
-    }
-    res.json({ message: "Deleted successfully" });
-  } catch (error) { 
-    res.status(500).json({ message: "Server error: " + error.message }); 
-  }
-};
-
-// ================= MONTHLY GRAPH DATA (Interview Level) =================
-exports.getMonthlyData = async (req, res) => {
-  try {
-    const data = await Transaction.aggregate([
-      // 1. Only get transactions for the logged-in user
-      { $match: { user: new mongoose.Types.ObjectId(req.user.userId) } },
-      
-      // 2. Group the data by Year, Month, and Type (Income vs Expense)
-      {
-        $group: {
-          _id: {
-            month: { $month: "$date" },
-            year: { $year: "$date" },
-            type: "$type"
-          },
-          total: { $sum: "$amount" }
-        }
-      },
-      // 3. Sort them chronologically
-      { $sort: { "_id.year": 1, "_id.month": 1 } }
-    ]);
-
-    // 4. Format the raw MongoDB data so Recharts can read it easily
-    const formattedData = data.reduce((acc, item) => {
-      // Convert month number to short name (e.g., "Jan", "Feb")
-      const monthName = new Date(item._id.year, item._id.month - 1).toLocaleString('default', { month: 'short' });
-      const yearMonth = `${monthName} ${item._id.year}`;
-      
-      let existingMonth = acc.find(m => m.name === yearMonth);
-      if (!existingMonth) {
-        existingMonth = { name: yearMonth, income: 0, expense: 0 };
-        acc.push(existingMonth);
-      }
-      
-      if (item._id.type === "income") existingMonth.income = item.total;
-      if (item._id.type === "expense") existingMonth.expense = item.total;
-      
-      return acc;
-    }, []);
-
-    res.json(formattedData);
-  } catch (error) { 
-    res.status(500).json({ message: error.message }); 
-  }
-};
-
-// ================= SMART INSIGHTS =================
-exports.getInsights = async (req, res) => {
-  try {
-    const data = await Transaction.aggregate([
-      // 1. Find only the logged-in user's expenses
-      { $match: { user: new mongoose.Types.ObjectId(req.user.userId), type: "expense" } },
-      // 2. Group them by category and add up the amounts
-      { $group: { _id: "$category", totalAmount: { $sum: "$amount" } } },
-      // 3. Sort them from highest to lowest
-      { $sort: { totalAmount: -1 } },
-      // 4. Only keep the top 1 result
-      { $limit: 1 }
-    ]);
-
-    if (data.length > 0) {
-      res.json({ topCategory: data[0]._id, amount: data[0].totalAmount });
-    } else {
-      res.json({ topCategory: "None", amount: 0 });
-    }
-  } catch (error) { 
-    res.status(500).json({ message: error.message }); 
-  }
-};
 
 
-// Kept the filter placeholder since you aren't using the real one yet
-exports.getByType = async (req, res) => { res.json({ msg: "Filter logic" }); };

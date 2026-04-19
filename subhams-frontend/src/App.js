@@ -1,135 +1,299 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
+import { GoogleLogin } from '@react-oauth/google';
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
-const API = "https://subhams-backend.onrender.com/api";
+const API = process.env.REACT_APP_BACKEND_URL || "https://subhams-backend.onrender.com/api";
 
 function App() {
-  // 🚀 THIS IS THE SWITCH! 
-  // Change 'true' to 'false' when you want to use the app normally!
-  const [isMaintenanceMode] = useState(true);
-
+  const [isMaintenanceMode] = useState(false);
+  const [isServerWaking, setIsServerWaking] = useState(!!localStorage.getItem("token")); 
+  const [authMode, setAuthMode] = useState("login"); 
+  
+  // 🚀 FIXED: Now tracking both Access and Refresh tokens
   const [token, setToken] = useState(localStorage.getItem("token"));
+  const [refreshToken, setRefreshToken] = useState(localStorage.getItem("refreshToken"));
+  
+  const [email, setEmail] = useState(""); 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState(""); 
   
   const [transactions, setTransactions] = useState([]);
+  const [allTransactions, setAllTransactions] = useState([]); 
+  
   const [monthlyChartData, setMonthlyChartData] = useState([]); 
   const [insights, setInsights] = useState(null); 
   
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [editingId, setEditingId] = useState(null);
-  
   const [category, setCategory] = useState("Other");
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   
   const [filterType, setFilterType] = useState("All");
   const [filterCategory, setFilterCategory] = useState("All");
+  const [searchQuery, setSearchQuery] = useState(""); 
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
-
+  
   const [interestData, setInterestData] = useState({ principal: "", rate: "", time: "" });
   const [interestResult, setInterestResult] = useState({});
 
-  // ================= AUTH =================
-  const login = async () => {
-    if (!username || !password) return alert("Enter details");
+  const formRef = useRef(null);
+
+  // ================= 🚀 SILENT TOKEN REFRESH LOGIC =================
+  const refreshAuthToken = useCallback(async () => {
+    if (!refreshToken || refreshToken === "null") return logout();
     try {
-      const res = await fetch(`${API}/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
+      const res = await fetch(`${API}/auth/refresh-token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: refreshToken })
+      });
       const data = await res.json();
-      if (res.ok && data.token) { localStorage.setItem("token", data.token); setToken(data.token); } 
-      else { alert(data.error || "Login failed"); }
+      if (res.ok && data.accessToken) {
+        localStorage.setItem("token", data.accessToken);
+        setToken(data.accessToken);
+        return data.accessToken;
+      } else {
+        logout();
+        return null;
+      }
+    } catch (err) {
+      logout();
+      return null;
+    }
+  }, [refreshToken]);
+
+  // ================= AUTHENTICATION LOGIC =================
+  const login = async () => {
+    if (!username || !password) return alert("Enter username and password");
+    setIsServerWaking(true); 
+    try {
+      const res = await fetch(`${API}/auth/login`, { 
+        method: "POST", headers: { "Content-Type": "application/json" }, 
+        body: JSON.stringify({ username, password }) 
+      });
+      const data = await res.json();
+      if (res.ok && data.accessToken) { 
+        // 🚀 FIXED: Storing both tokens on login
+        localStorage.setItem("token", data.accessToken); 
+        localStorage.setItem("refreshToken", data.refreshToken);
+        setToken(data.accessToken); 
+        setRefreshToken(data.refreshToken);
+      } else { alert(data.error || "Login failed"); }
     } catch (err) { alert("Backend server is offline."); }
+    finally { setIsServerWaking(false); }
   };
 
-  const register = async () => {
-    if (!username || !password) return alert("Enter details");
+  const handleGoogleSuccess = async (credentialResponse) => {
+    setIsServerWaking(true);
     try {
-      const res = await fetch(`${API}/auth/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
-      if (res.ok) alert("Registered successfully! Now please login."); else alert("Registration failed");
-    } catch (err) { alert("Backend server is offline."); }
+      const res = await fetch(`${API}/auth/google-login`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken: credentialResponse.credential })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        // 🚀 FIXED: Storing both tokens on Google Login
+        localStorage.setItem("token", data.accessToken);
+        localStorage.setItem("refreshToken", data.refreshToken);
+        setToken(data.accessToken);
+        setRefreshToken(data.refreshToken);
+      } else { alert("Google Auth failed in backend."); }
+    } catch (err) { alert("Server is offline."); }
+    finally { setIsServerWaking(false); }
   };
 
-  const logout = () => { localStorage.removeItem("token"); setToken(null); setTransactions([]); setMonthlyChartData([]); setInsights(null); };
-
-  // ================= FETCH DATA =================
-  const fetchTransactions = useCallback(async () => {
-    if (!token || token === "null" || token === "undefined") return;
+  const requestRegister = async () => {
+    if (!email || !username || !password) return alert("Enter email, username, and password");
+    setIsServerWaking(true);
     try {
-      const res = await fetch(`${API}/transactions`, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.status === 400 || res.status === 401 || res.status === 403) { logout(); return; } 
-      const data = await res.json(); if (Array.isArray(data)) setTransactions(data);
-    } catch (err) { console.error(err); }
+      const res = await fetch(`${API}/auth/register`, { 
+        method: "POST", headers: { "Content-Type": "application/json" }, 
+        body: JSON.stringify({ email, username, password }) 
+      });
+      const data = await res.json();
+      if (res.ok) { 
+        alert("OTP sent to your email!"); 
+        setAuthMode("otp"); 
+      } else { alert(data.error || "Registration failed"); }
+    } catch (err) { alert("Backend server is offline."); }
+    finally { setIsServerWaking(false); }
+  };
+
+  const verifyOtpAndRegister = async () => {
+    if (!otp) return alert("Enter the OTP sent to your email");
+    setIsServerWaking(true);
+    try {
+      const res = await fetch(`${API}/auth/verify-otp`, { 
+        method: "POST", headers: { "Content-Type": "application/json" }, 
+        body: JSON.stringify({ email, username, password, otp }) 
+      });
+      const data = await res.json();
+      if (res.ok) { 
+        alert("Success! You can now log in."); 
+        setAuthMode("login"); 
+        setPassword(""); setOtp("");
+      } else { alert(data.error || "Invalid OTP"); }
+    } catch (err) { alert("Backend server is offline."); }
+    finally { setIsServerWaking(false); }
+  };
+
+  const logout = () => { 
+    // 🚀 FIXED: Clearing both tokens on logout
+    localStorage.removeItem("token"); 
+    localStorage.removeItem("refreshToken");
+    setToken(null); 
+    setRefreshToken(null);
+    setTransactions([]); setAllTransactions([]); setMonthlyChartData([]); setInsights(null); 
+    setAuthMode("login");
+  };
+
+  // ================= FETCH ALL DATA =================
+  const fetchAllData = useCallback(async () => {
+    if (!token || token === "null") { setIsServerWaking(false); return; }
+    try {
+      const headers = { Authorization: `Bearer ${token}` };
+      const [tRes, mRes, iRes] = await Promise.all([
+        fetch(`${API}/transactions`, { headers }),
+        fetch(`${API}/transactions/monthly`, { headers }),
+        fetch(`${API}/transactions/insights`, { headers })
+      ]);
+
+      // 🚀 FIXED: If Access Token expired, try refreshing it once
+      if (tRes.status === 401 || tRes.status === 403) { 
+        const newToken = await refreshAuthToken();
+        if (newToken) {
+            fetchAllData(); // Retry fetch with new token
+        }
+        return; 
+      }
+
+      const tData = await tRes.json(); const mData = await mRes.json(); const iData = await iRes.json();
+      if (Array.isArray(tData)) {
+        setTransactions(tData);
+        setAllTransactions(tData); 
+      }
+      if (Array.isArray(mData)) setMonthlyChartData(mData);
+      setInsights(iData);
+    } catch (err) { console.error("Fetch Error:", err); } 
+    finally { setIsServerWaking(false); }
+  }, [token, refreshAuthToken]);
+
+  useEffect(() => { fetchAllData(); }, [fetchAllData]);
+
+  // ================= 🚀 SUBHAMS HEARTBEAT =================
+  useEffect(() => {
+    if (!token || token === "null") return;
+    const interval = setInterval(() => {
+      fetch(`${API}/transactions/summary`, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      }).catch(err => console.log("Heartbeat paused."));
+    }, 120000); 
+
+    return () => clearInterval(interval);
   }, [token]);
 
-  const fetchMonthlyData = useCallback(async () => {
-    if (!token || token === "null" || token === "undefined") return;
-    try {
-      const res = await fetch(`${API}/transactions/monthly`, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.status === 400 || res.status === 401 || res.status === 403) return;
-      const data = await res.json(); if (Array.isArray(data)) setMonthlyChartData(data);
-    } catch (err) { console.error(err); }
-  }, [token]);
 
-  const fetchInsights = useCallback(async () => {
-    if (!token || token === "null" || token === "undefined") return;
-    try {
-      const res = await fetch(`${API}/transactions/insights`, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.status === 400 || res.status === 401 || res.status === 403) return;
-      const data = await res.json(); setInsights(data);
-    } catch (err) { console.error(err); }
-  }, [token]);
+  // ================= 🚀 SUBHAMS WHITE PAPER PDF DOWNLOAD =================
+  const downloadWhitePaper = () => {
+    if (transactions.length === 0) return alert("No transactions to download!");
+    
+    const doc = new jsPDF();
+    const now = new Date();
+    
+    doc.setFontSize(24);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(245, 158, 11); 
+    doc.text("SUBHAMS PMMS", 14, 22);
+    
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 116, 139); 
+    doc.text("Official Financial White Paper Report", 14, 30);
+    doc.text(`Generated on: ${now.toLocaleDateString()} at ${now.toLocaleTimeString()}`, 14, 36);
 
-  useEffect(() => { fetchTransactions(); fetchMonthlyData(); fetchInsights(); }, [fetchTransactions, fetchMonthlyData, fetchInsights]);
+    doc.setDrawColor(226, 232, 240);
+    doc.setFillColor(248, 250, 252);
+    doc.rect(14, 45, 182, 25, 'FD'); 
+    
+    doc.setFontSize(12);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`Global Income: Rs. ${income}`, 20, 60);
+    doc.text(`Global Expense: Rs. ${expense}`, 80, 60);
+    
+    if (balance >= 0) doc.setTextColor(16, 185, 129); 
+    else doc.setTextColor(239, 68, 68); 
+    doc.text(`Global Balance: Rs. ${balance}`, 140, 60);
 
-  // ================= ADD / UPDATE =================
+    const tableColumn = ["Date", "Title", "Category", "Type", "Amount (Rs)"];
+    const tableRows = transactions.map(t => [
+      new Date(t.date).toLocaleDateString(), t.title, t.category || "Other", t.type.toUpperCase(), t.amount
+    ]);
+
+    autoTable(doc, {
+      head: [tableColumn], body: tableRows, startY: 80, theme: 'grid',
+      headStyles: { fillColor: [15, 23, 42], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [241, 245, 249] }, styles: { fontSize: 10 }
+    });
+
+    doc.save(`Subhams_WhitePaper_${now.toLocaleDateString().replace(/\//g, "-")}.pdf`);
+  };
+
+  // ================= TRANSACTIONS (ADD/EDIT/DELETE/SEARCH) =================
   const handleSubmit = async (type) => {
     if (!title || !amount) return alert("Enter title & amount");
     const url = editingId ? `${API}/transactions/${editingId}` : `${API}/transactions`;
     const method = editingId ? "PUT" : "POST";
     try {
       const res = await fetch(url, { 
-        method: method, 
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, 
+        method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, 
         body: JSON.stringify({ title, amount: Number(amount), type, category, date }) 
       });
-      
       if (res.ok) { 
         setTitle(""); setAmount(""); setEditingId(null); setCategory("Other"); 
-        setDate(new Date().toISOString().split('T')[0]); 
-        clearFilters(); fetchMonthlyData(); fetchInsights(); 
+        setDate(new Date().toISOString().split('T')[0]); fetchAllData(); 
       } else { 
-        const errData = await res.json();
-        alert("BACKEND REJECTED THIS BECAUSE: " + errData.message); 
+        const errData = await res.json(); alert("Error: " + errData.message); 
       }
-    } catch (err) { 
-      alert("CRITICAL ERROR: " + err.message); 
-    }
+    } catch (err) { alert("Server Error."); }
   };
 
-  const handleEdit = (t) => { setTitle(t.title); setAmount(t.amount); setEditingId(t._id); setCategory(t.category || "Other"); setDate(t.date ? t.date.substring(0, 10) : new Date().toISOString().split('T')[0]); };
+  const handleEdit = (t) => { 
+    setTitle(t.title); setAmount(t.amount); setEditingId(t._id); 
+    setCategory(t.category || "Other"); setDate(t.date ? t.date.substring(0, 10) : new Date().toISOString().split('T')[0]); 
+    formRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+  
   const cancelEdit = () => { setTitle(""); setAmount(""); setEditingId(null); setCategory("Other"); setDate(new Date().toISOString().split('T')[0]); };
 
-  // ================= DELETE =================
   const deleteTransaction = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this?")) return;
+    if (!window.confirm("Delete this transaction?")) return;
     try {
       const res = await fetch(`${API}/transactions/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) { fetchTransactions(); fetchMonthlyData(); fetchInsights(); } 
+      if (res.ok) fetchAllData(); 
     } catch (err) { alert("Network Error."); }
   };
 
-  // ================= FILTERS =================
   const applyFilters = async () => {
     try {
-      const queryParams = new URLSearchParams({ type: filterType, category: filterCategory, startDate: filterStartDate, endDate: filterEndDate }).toString();
-      const res = await fetch(`${API}/transactions/filter?${queryParams}`, { headers: { Authorization: `Bearer ${token}` } });
-      const data = await res.json(); if (Array.isArray(data)) setTransactions(data);
-    } catch (err) { alert("Filter search failed."); }
+      const query = new URLSearchParams({ 
+        type: filterType, category: filterCategory, search: searchQuery, startDate: filterStartDate, endDate: filterEndDate 
+      }).toString();
+      const res = await fetch(`${API}/transactions/filter?${query}`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json(); 
+      if (Array.isArray(data)) setTransactions(data); 
+    } catch (err) { console.error("Search failed:", err); }
   };
-  const clearFilters = () => { setFilterType("All"); setFilterCategory("All"); setFilterStartDate(""); setFilterEndDate(""); fetchTransactions(); };
 
-  // ================= CALCULATORS =================
+  const clearFilters = () => { 
+    setFilterType("All"); setFilterCategory("All"); setSearchQuery(""); setFilterStartDate(""); setFilterEndDate(""); 
+    fetchAllData(); 
+  };
+
   const calculateInterest = async () => {
     try {
       const res = await fetch(`${API}/transactions/interest`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(interestData) });
@@ -137,239 +301,305 @@ function App() {
     } catch (err) { alert("Failed to calculate interest"); }
   };
 
-  const income = transactions.filter(t => t.type === "income").reduce((a, b) => a + b.amount, 0);
-  const expense = transactions.filter(t => t.type === "expense").reduce((a, b) => a + b.amount, 0);
+  // ================= MATH (Using allTransactions for Global view) =================
+  const income = allTransactions.filter(t => t.type === "income").reduce((a, b) => a + Number(b.amount), 0);
+  const expense = allTransactions.filter(t => t.type === "expense").reduce((a, b) => a + Number(b.amount), 0);
   const balance = income - expense;
   const pieData = [ { name: "Income", value: income }, { name: "Expense", value: expense } ];
-  const chartColors = ["#10b981", "#ef4444"]; 
 
-  let smartMessage = null;
-  let smartMessageTe = null;
-  let insightColor = "#3b82f6"; 
-  let insightBg = "linear-gradient(90deg, #eff6ff 0%, #dbeafe 100%)";
-  let insightEmoji = "💡";
-
+  let smartMsg = null; let smartMsgTe = null; let insightClass = "insight-blue";
   if (income > 0 || expense > 0) {
-    if (income > 0 && expense === 0) {
-      smartMessage = `Great start, ${username}! You are saving 100% of your ₹${income} income. Keep it up!`;
-      smartMessageTe = `అద్భుతమైన ఆరంభం, ${username}! మీరు మీ ₹${income} ఆదాయాన్ని 100% ఆదా చేస్తున్నారు. ఇలాగే కొనసాగించండి!`;
-      insightColor = "#10b981"; insightBg = "linear-gradient(90deg, #f0fdf4 0%, #dcfce7 100%)"; insightEmoji = "💰";
-    } else if (expense > income && income > 0) {
-      smartMessage = `Careful, ${username}! You've spent ₹${expense - income} more than you earned. Top drain: ${insights?.topCategory || "Other"}.`;
-      smartMessageTe = `జాగ్రత్త, ${username}! మీరు సంపాదించిన దానికంటే ₹${expense - income} ఎక్కువ ఖర్చు చేశారు. అత్యధిక ఖర్చు: ${insights?.topCategory || "Other"}.`;
-      insightColor = "#ef4444"; insightBg = "linear-gradient(90deg, #fef2f2 0%, #fee2e2 100%)"; insightEmoji = "⚠️";
-    } else if (expense > 0 && income === 0) {
-      smartMessage = `Heads up, ${username}! You've logged ₹${expense} in expenses but no income yet.`;
-      smartMessageTe = `గమనిక, ${username}! మీరు ₹${expense} ఖర్చు చేశారు, కానీ ఇంకా ఎలాంటి ఆదాయం నమోదు చేయలేదు.`;
-      insightColor = "#f59e0b"; insightBg = "linear-gradient(90deg, #fffbeb 0%, #fef3c7 100%)"; insightEmoji = "📉";
-    } else if (income > 0 && expense > 0) {
+    const topDrain = insights?.topCategory || "Other";
+    const topAmount = insights?.amount || 0;
+
+    if (income > 0 && expense === 0) { 
+      smartMsg = `100% of income (₹${income}) has been saved.`; 
+      smartMsgTe = `100% ఆదాయం (₹${income}) ఆదా చేయబడింది.`; 
+      insightClass = "insight-green"; 
+    } 
+    else if (expense > income && income > 0) { 
       const spendPercent = Math.round((expense / income) * 100);
-      if (spendPercent <= 20) {
-        smartMessage = `Amazing, ${username}! You've only spent ${spendPercent}% of your income. You are building excellent savings!`;
-        smartMessageTe = `అద్భుతం, ${username}! మీరు మీ ఆదాయంలో కేవలం ${spendPercent}% మాత్రమే ఖర్చు చేశారు. మీరు మంచి పొదుపు చేస్తున్నారు!`;
-        insightColor = "#10b981"; insightBg = "linear-gradient(90deg, #f0fdf4 0%, #dcfce7 100%)"; insightEmoji = "🌟";
-      } else if (spendPercent >= 80) {
-        smartMessage = `Watch out, ${username}! You've spent ${spendPercent}% of your income. Try cutting back on ${insights?.topCategory || "Other"} (₹${insights?.amount || 0}).`;
-        smartMessageTe = `జాగ్రత్త, ${username}! మీరు మీ ఆదాయంలో ${spendPercent}% ఖర్చు చేశారు. ${insights?.topCategory || "Other"} (₹${insights?.amount || 0}) ఖర్చును తగ్గించుకోవడానికి ప్రయత్నించండి.`;
-        insightColor = "#f59e0b"; insightBg = "linear-gradient(90deg, #fffbeb 0%, #fef3c7 100%)"; insightEmoji = "🚨";
-      } else {
-        smartMessage = `Good pacing, ${username}. You've spent ${spendPercent}% of your income. Highest expense: ${insights?.topCategory || "Other"} (₹${insights?.amount || 0}).`;
-        smartMessageTe = `పర్వాలేదు, ${username}. మీరు మీ ఆదాయంలో ${spendPercent}% ఖర్చు చేశారు. అత్యధిక ఖర్చు: ${insights?.topCategory || "Other"} (₹${insights?.amount || 0}).`;
-        insightColor = "#3b82f6"; insightBg = "linear-gradient(90deg, #eff6ff 0%, #dbeafe 100%)"; insightEmoji = "📊";
-      }
+      smartMsg = `Total expenses equal ${spendPercent}% of income. Deficit: ₹${expense - income}. Highest drain: ${topDrain} (₹${topAmount}).`; 
+      smartMsgTe = `ఖర్చులు ఆదాయంలో ${spendPercent}%. లోటు: ₹${expense - income}. అత్యధిక ఖర్చు: ${topDrain} (₹${topAmount}).`; 
+      insightClass = "insight-red"; 
+    } 
+    else if (expense > 0 && income === 0) { 
+      smartMsg = `Logged ₹${expense} in expenses with no income recorded.`; 
+      smartMsgTe = `₹${expense} ఖర్చు నమోదు చేయబడింది, కానీ ఆదాయం లేదు.`; 
+      insightClass = "insight-red"; 
+    } 
+    else { 
+      const spendPercent = Math.round((expense / income) * 100);
+      const savePercent = 100 - spendPercent;
+      
+      smartMsg = `Saved ${savePercent}% | Spent ${spendPercent}%. Highest drain: ${topDrain} (₹${topAmount}).`; 
+      smartMsgTe = `${savePercent}% ఆదా చేశారు | ${spendPercent}% ఖర్చు చేశారు. అత్యధిక ఖర్చు: ${topDrain} (₹${topAmount}).`; 
+      
+      if (spendPercent <= 30) insightClass = "insight-green"; 
+      else if (spendPercent >= 75) insightClass = "insight-red"; 
+      else insightClass = "insight-blue"; 
     }
   }
 
-  // ================= STYLES =================
-  const styles = {
-    app: { fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", backgroundColor: "#f8fafc", minHeight: "100vh" },
-    navbar: { backgroundColor: "#0f172a", color: "white", padding: "15px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" },
-    marqueeContainer: { backgroundColor: "#1e293b", color: "#fbbf24", padding: "10px", overflow: "hidden", whiteSpace: "nowrap" },
-    marqueeText: { display: "inline-block", animation: "scrollLeft 30s linear infinite" },
-    container: { maxWidth: "1100px", margin: "0 auto", padding: "20px" },
-    card: { backgroundColor: "white", padding: "25px", borderRadius: "12px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)", marginBottom: "25px" },
-    summaryBox: { display: "flex", justifyContent: "space-around", backgroundColor: "#f1f5f9", padding: "20px", borderRadius: "12px", fontWeight: "bold", fontSize: "1.2em", marginBottom: "25px", textAlign: "center" },
-    insightBanner: { padding: "15px 20px", borderRadius: "8px", marginBottom: "25px", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "8px", fontSize: "1.1em", borderLeft: "4px solid" },
-    input: { padding: "12px", margin: "5px", border: "1px solid #cbd5e1", borderRadius: "6px", width: "calc(50% - 24px)", outline: "none", boxSizing: "border-box" },
-    select: { padding: "12px", margin: "5px", border: "1px solid #cbd5e1", borderRadius: "6px", width: "calc(50% - 24px)", outline: "none", backgroundColor: "white" },
-    filterSelect: { padding: "10px", margin: "5px", border: "1px solid #cbd5e1", borderRadius: "6px", outline: "none", backgroundColor: "white" },
-    btn: { padding: "10px 15px", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "bold", color: "white", margin: "5px" },
-    btnIncome: { backgroundColor: "#10b981" }, btnExpense: { backgroundColor: "#ef4444" }, btnNeutral: { backgroundColor: "#3b82f6" }, btnCancel: { backgroundColor: "#64748b" }, btnDanger: { backgroundColor: "#ef4444", padding: "6px 12px", fontSize: "0.85em" }, btnEdit: { backgroundColor: "#f59e0b", padding: "6px 12px", fontSize: "0.85em", marginRight: "8px" },
-    listItem: { display: "flex", justifyContent: "space-between", padding: "15px", borderBottom: "1px solid #f1f5f9", alignItems: "center" },
-    badge: { fontSize: "0.75em", padding: "3px 8px", borderRadius: "12px", backgroundColor: "#e2e8f0", color: "#475569", marginLeft: "10px", fontWeight: "bold" },
-    dateText: { fontSize: "0.85em", color: "#94a3b8", display: "block", marginTop: "4px" },
-    footer: { textAlign: "center", padding: "40px 20px", marginTop: "40px", color: "#64748b", backgroundColor: "white", borderTop: "1px solid #e2e8f0" },
-    instagramBtn: { backgroundColor: "#e1306c", color: "white", padding: "10px 20px", borderRadius: "20px", textDecoration: "none", fontWeight: "bold", display: "inline-block", marginTop: "15px" }
-  };
+  // ================= CSS STYLES (NO CHANGES) =================
+  const globalStyles = `
+    * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: #f1f5f9; margin: 0; color: #334155; }
+    .nav-bar { background: #0f172a; color: white; padding: 15px 5%; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 1000; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .card { background: white; border-radius: 16px; padding: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #e2e8f0; }
+    .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 25px; }
+    .action-grid { display: grid; grid-template-columns: 35% 65%; gap: 20px; }
+    @media (max-width: 900px) { .action-grid { grid-template-columns: 1fr; } }
+    .metric-card { text-align: center; padding: 20px; border-radius: 12px; background: white; border: 1px solid #e2e8f0; }
+    .metric-title { font-size: 0.85rem; color: #64748b; font-weight: bold; letter-spacing: 1px; }
+    .metric-value { font-size: 2rem; font-weight: 800; margin: 10px 0 0 0; }
+    .form-group { display: flex; flex-direction: column; gap: 12px; margin-bottom: 15px; }
+    .input-clean { padding: 12px 15px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 1rem; width: 100%; outline: none; }
+    .input-clean:focus { border-color: #3b82f6; }
+    .btn { padding: 12px 20px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 1rem; transition: 0.2s; }
+    .btn:hover { opacity: 0.9; }
+    .btn-green { background: #10b981; color: white; }
+    .btn-red { background: #ef4444; color: white; }
+    .btn-blue { background: #3b82f6; color: white; }
+    .btn-dark { background: #1e293b; color: white; border: 1px solid #334155; }
+    .history-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid #f1f5f9; }
+    .insight-green { background: #f0fdf4; border-left: 5px solid #10b981; color: #065f46; }
+    .insight-red { background: #fef2f2; border-left: 5px solid #ef4444; color: #991b1b; }
+    .insight-blue { background: #eff6ff; border-left: 5px solid #3b82f6; color: #1e40af; }
+    .login-box { max-width: 450px; margin: 50px auto; text-align: center; }
+    .spinner { width: 50px; height: 50px; border: 5px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto; }
+    .marquee-container { background-color: #1e293b; color: #fbbf24; padding: 10px; overflow: hidden; white-space: nowrap; }
+    .marquee-text { display: inline-block; animation: scrollLeft 30s linear infinite; font-weight: 500; letter-spacing: 0.5px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes scrollLeft { 0% { transform: translateX(100vw); } 100% { transform: translateX(-100%); } }
+    .brand-logo { font-size: 2.2rem; font-weight: 900; letter-spacing: -1px; margin: 0; background: linear-gradient(45deg, #f59e0b, #facc15); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .scrollable-history::-webkit-scrollbar { width: 6px; }
+    .scrollable-history::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+    .scrollable-history::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    .scrollable-history::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  `;
 
- // 🚀 MAINTENANCE MODE RENDER BLOCK (Updated with BIG SUBHAMS Text)
-  if (isMaintenanceMode) {
-    return (
-      <div style={{ ...styles.app, display: "flex", justifyContent: "center", alignItems: "center", padding: "40px 20px" }}>
-        <div style={{ ...styles.card, width: "650px", textAlign: "center", padding: "50px", borderTop: "6px solid #f59e0b" }}>
-          
-          {/* 🚀 NEW: Massive Text Logo instead of the SVG graphic */}
-          <div style={{ marginBottom: "30px" }}>
-            <h1 style={{ fontSize: "4.5em", fontWeight: "900", color: "#f59e0b", margin: "0", letterSpacing: "2px", textTransform: "uppercase" }}>SUBHAMS</h1>
-            <p style={{ color: "#64748b", margin: "5px 0 0 0", fontSize: "1.2em", letterSpacing: "8px", fontWeight: "bold" }}>PMMS</p>
-          </div>
+  if (isMaintenanceMode) return <div style={{textAlign: "center", padding: "100px"}}><h1>🛠️ Maintenance</h1></div>;
+  if (isServerWaking) return (
+    <div style={{ textAlign: "center", padding: "100px" }}>
+      <style>{globalStyles}</style>
+      <h1 className="brand-logo" style={{ marginBottom: "30px", fontSize: "3rem" }}>SUBHAMS</h1>
+      <div className="spinner"></div>
+      <h2 style={{marginTop: "20px", color: "#64748b"}}>Communicating with Server...</h2>
+    </div>
+  );
 
-          <h1 style={{ color: "#0f172a", marginBottom: "5px", fontSize: "2em" }}>🛠️ System Upgrade</h1>
-          <h2 style={{ color: "#f59e0b", marginTop: "0", fontWeight: "normal", fontSize: "1.3em" }}>సిస్టమ్ అప్‌డేట్ జరుగుతోంది</h2>
-
-          <div style={{ backgroundColor: "#fffbeb", padding: "20px", borderRadius: "8px", marginTop: "30px", borderLeft: "4px solid #f59e0b", textAlign: "left" }}>
-            <p style={{ fontSize: "1.1em", color: "#334155", lineHeight: "1.6", margin: "0 0 15px 0" }}>
-              <b>We are upgrading Subhams PMMS with exciting new features!</b> <br/>
-              The server is currently under maintenance and will be ready in a few hours. Get ready to enjoy exploring the new features.
-            </p>
-            <p style={{ fontSize: "1.1em", color: "#334155", lineHeight: "1.6", margin: "0" }}>
-              <b>మేము శుభమ్స్ PMMS కు సరికొత్త ఫీచర్లను జోడిస్తున్నాము!</b> <br/>
-              ప్రస్తుతం సర్వర్ నిర్వహణలో ఉంది, కొద్ది గంటల్లో సిద్ధంగా ఉంటుంది. కొత్త ఫీచర్లను ఆస్వాదించడానికి సిద్ధంగా ఉండండి.
-            </p>
-          </div>
-
-          <div style={{ marginTop: "40px", display: "inline-block", padding: "10px 20px", backgroundColor: "#f1f5f9", borderRadius: "20px", color: "#64748b", fontWeight: "bold" }}>
-            ⏳ Please check back soon...
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ================= NORMAL UI RENDER =================
-  if (!token || token === "null" || token === "undefined") return (
-    <div style={{ ...styles.app, display: "flex", justifyContent: "center", alignItems: "center", padding: "40px 20px" }}>
-      <div style={{ ...styles.card, width: "600px", textAlign: "center", padding: "40px" }}>
-        <h1 style={{ color: "#0f172a", margin: "0 0 5px 0" }}>🏦 Subhams PMMS</h1>
-        <h3 style={{ color: "#64748b", margin: "0 0 25px 0", fontWeight: "normal" }}>Personal Money Management System</h3>
+  if (!token) return (
+    <div>
+      <style>{globalStyles}</style>
+      <div className="login-box card">
+        <h1 className="brand-logo" style={{ marginBottom: "10px" }}>SUBHAMS</h1>
+        <p style={{ color: "#64748b", marginBottom: "25px", fontWeight: "bold" }}>PMMS</p>
         
-        <div style={{ backgroundColor: "#f8fafc", padding: "20px", borderRadius: "8px", marginBottom: "30px", textAlign: "left", fontSize: "0.95em", color: "#334155", borderLeft: "4px solid #3b82f6" }}>
-          <p style={{ margin: "0 0 15px 0", lineHeight: "1.5" }}><b>Hello everyone!</b> I am Subhams PMMS. In our busy lives, we often forget to track our daily income and expenses. My aim is to help you easily record and manage every transaction so you can secure your financial future.</p>
-          <p style={{ margin: 0, lineHeight: "1.6", color: "#0f172a" }}><b>అందరికీ నమస్కారం!</b> శుభమ్స్ PMMS కు స్వాగతం. మన బిజీ జీవితంలో రోజువారీ ఆదాయం, ఖర్చులను ట్రాక్ చేయడం తరచుగా మర్చిపోతుంటాం. మీ ప్రతి లావాదేవీని సులభంగా రికార్డ్ చేసి, మీ ఆర్థిక భవిష్యత్తును సురక్షితం చేయడమే నా లక్ష్యం.</p>
-          <b>Venkata Pavan Kumar</b>
-        </div>
+        {authMode === "login" && (
+          <>
+            <div className="form-group">
+              <input className="input-clean" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} />
+              <input className="input-clean" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
+            </div>
+            <button className="btn btn-blue" style={{ width: "100%", marginBottom: "15px" }} onClick={login}>Login</button>
+            <p style={{ fontSize: "0.9rem" }}>Don't have an account? <span style={{ color: "#3b82f6", cursor: "pointer", fontWeight: "bold" }} onClick={() => setAuthMode("register")}>Create one here</span></p>
+            <div style={{ margin: "25px 0", color: "#cbd5e1", fontSize: "0.9rem" }}>────── OR ──────</div>
+            <div style={{ display: "flex", justifyContent: "center" }}><GoogleLogin onSuccess={handleGoogleSuccess} onError={() => alert("Google Error")} /></div>
+          </>
+        )}
 
-        <input style={{...styles.input, width: "80%"}} placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
-        <input style={{...styles.input, width: "80%"}} placeholder="Strong Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} /><br/><br/>
-        <button style={{ ...styles.btn, ...styles.btnNeutral, width: "38%" }} onClick={login}>Login</button>
-        <button style={{ ...styles.btn, backgroundColor: "#10b981", width: "38%" }} onClick={register}>Register</button>
+        {authMode === "register" && (
+          <>
+            <h3 style={{ color: "#10b981", margin: "0 0 15px 0" }}>Create an Account</h3>
+            <div className="form-group">
+              <input className="input-clean" placeholder="Email Address" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+              <input className="input-clean" placeholder="Choose a Username" value={username} onChange={e => setUsername(e.target.value)} />
+              <input className="input-clean" type="password" placeholder="Strong Password" value={password} onChange={e => setPassword(e.target.value)} />
+            </div>
+            <button className="btn btn-green" style={{ width: "100%", marginBottom: "15px" }} onClick={requestRegister}>Send OTP to Email</button>
+            <p style={{ fontSize: "0.9rem" }}>Already have an account? <span style={{ color: "#3b82f6", cursor: "pointer", fontWeight: "bold" }} onClick={() => setAuthMode("login")}>Login instead</span></p>
+          </>
+        )}
+
+        {authMode === "otp" && (
+          <>
+            <h3 style={{ color: "#f59e0b", margin: "0 0 15px 0" }}>Enter OTP Code</h3>
+            <p style={{ fontSize: "0.9rem", color: "#64748b", marginBottom: "20px" }}>We sent a 6-digit code to <b>{email}</b></p>
+            <div className="form-group">
+              <input className="input-clean" placeholder="6-Digit OTP" type="text" value={otp} onChange={e => setOtp(e.target.value)} style={{ textAlign: "center", fontSize: "1.5rem", letterSpacing: "5px" }} />
+            </div>
+            <button className="btn btn-green" style={{ width: "100%", marginBottom: "15px" }} onClick={verifyOtpAndRegister}>Verify & Register</button>
+            <p style={{ fontSize: "0.9rem" }}><span style={{ color: "#ef4444", cursor: "pointer" }} onClick={() => setAuthMode("register")}>Cancel & Go Back</span></p>
+          </>
+        )}
       </div>
     </div>
   );
 
   return (
-    <div style={styles.app}>
-      <style>{`@keyframes scrollLeft { 0% { transform: translateX(100vw); } 100% { transform: translateX(-100%); } }`}</style>
-      <div style={styles.marqueeContainer}><div style={styles.marqueeText}>🚀 Important Note: Welcome to your Subhams Personal Money Management System! Track your income, manage your expenses, and secure your financial future ! Thank You visiting My website ! Venkata Pavan Kumar.</div></div>
-      <nav style={styles.navbar}><h2 style={{ margin: 0 }}>Subhams</h2><button style={{ ...styles.btn, ...styles.btnExpense }} onClick={logout}>Logout</button></nav>
+    <div>
+      <style>{globalStyles}</style>
 
-      <div style={styles.container}>
-        
-        <div style={styles.summaryBox}>
-          <div>
-            <div style={{ color: "#64748b", fontSize: "0.8em" }}>TOTAL INCOME <br/><span style={{fontSize: "1.3em", color: "#1e293b"}}>ఆదాయం</span></div>
-            <div style={{ color: "#10b981", fontSize: "1.5em", marginTop: "5px" }}>₹{income}</div>
+      <div className="marquee-container">
+        <div className="marquee-text">
+          🚀 Important Note: Welcome to your Subhams Personal Money Management System! Track your income, manage your expenses, and secure your financial future! Thank You visiting My website! Venkata Pavan Kumar.
+        </div>
+      </div>
+      
+      <nav className="nav-bar">
+        <h2 className="brand-logo" style={{ fontSize: "1.8rem" }}>Subhams</h2>
+        <button className="btn btn-red" style={{ padding: "8px 15px", fontSize: "0.9rem" }} onClick={logout}>Logout</button>
+      </nav>
+
+      <div className="container">
+        <div className="dashboard-grid">
+          <div className="metric-card">
+            <div className="metric-title">TOTAL INCOME <br/>ఆదాయం</div>
+            <div className="metric-value" style={{ color: "#10b981" }}>₹{income}</div>
           </div>
-          <div>
-            <div style={{ color: "#64748b", fontSize: "0.8em" }}>TOTAL EXPENSE <br/><span style={{fontSize: "1.3em", color: "#1e293b"}}>ఖర్చు</span></div>
-            <div style={{ color: "#ef4444", fontSize: "1.5em", marginTop: "5px" }}>₹{expense}</div>
+          <div className="metric-card">
+            <div className="metric-title">TOTAL EXPENSE <br/>ఖర్చు</div>
+            <div className="metric-value" style={{ color: "#ef4444" }}>₹{expense}</div>
           </div>
-          <div>
-            <div style={{ color: "#64748b", fontSize: "0.8em" }}>CURRENT BALANCE <br/><span style={{fontSize: "1.3em", color: "#1e293b"}}>నిల్వ</span></div>
-            <div style={{ color: balance >= 0 ? "#3b82f6" : "#ef4444", fontSize: "1.5em", marginTop: "5px" }}>₹{balance}</div>
+          <div className="metric-card">
+            <div className="metric-title">BALANCE <br/>నిల్వ</div>
+            <div className="metric-value" style={{ color: balance >= 0 ? "#3b82f6" : "#ef4444" }}>₹{balance}</div>
           </div>
         </div>
 
-        {smartMessage && (
-          <div style={{ ...styles.insightBanner, background: insightBg, borderLeftColor: insightColor, color: insightColor }}>
-            <div>{insightEmoji} &nbsp;<b>Subhams for You:</b> &nbsp;{smartMessage}</div>
-            <div style={{ paddingLeft: "35px", fontSize: "0.95em", opacity: 0.9 }}><b>మీ కోసం శుభమ్స్:</b> &nbsp;{smartMessageTe}</div>
+        {smartMsg && (
+          <div className={`card ${insightClass}`} style={{ marginBottom: "25px", padding: "15px 25px" }}>
+            <h4 style={{ margin: "0 0 8px 0" }}>💡 Subhams Insights:</h4>
+            <div style={{ lineHeight: "1.5" }}>
+              {smartMsg} <br />
+              <small style={{ opacity: 0.8 }}>{smartMsgTe}</small>
+            </div>
           </div>
         )}
 
-        {(income > 0 || expense > 0) && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "20px", marginBottom: "25px" }}>
-            <div style={{ ...styles.card, flex: "1 1 400px", marginBottom: 0, paddingBottom: "20px" }}>
-              <h3 style={{ margin: "0 0 10px 0", textAlign: "center" }}>📊 Overall Split</h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart><Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">{pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />)}</Pie><Tooltip formatter={(value) => `₹${value}`} /><Legend /></PieChart>
-              </ResponsiveContainer>
+        <div className="action-grid">
+          
+          <div className="card" ref={formRef} style={{ alignSelf: "start", marginBottom: 0 }}>
+            <h3 style={{ marginTop: 0 }}>{editingId ? "✏️ Edit" : "➕ Add Money"}</h3>
+            <div className="form-group">
+              <input className="input-clean" placeholder="Title (e.g., Rent)" value={title} onChange={e => setTitle(e.target.value)} />
+              <input className="input-clean" type="number" placeholder="Amount (₹)" value={amount} onChange={e => setAmount(e.target.value)} />
+              <select className="input-clean" value={category} onChange={e => setCategory(e.target.value)}>
+                <option value="Food">🍔 Food</option><option value="Travel">✈️ Travel</option><option value="Salary">💰 Salary</option><option value="Shopping">🛍️ Shopping</option><option value="Other">📌 Other</option>
+              </select>
+              <input className="input-clean" type="date" value={date} onChange={e => setDate(e.target.value)} />
             </div>
-            {monthlyChartData.length > 0 && (
-              <div style={{ ...styles.card, flex: "1 1 500px", marginBottom: 0, paddingBottom: "20px" }}>
-                <h3 style={{ margin: "0 0 10px 0", textAlign: "center" }}>📈 Monthly Trend</h3>
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={monthlyChartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" /><YAxis /><Tooltip formatter={(value) => `₹${value}`} /><Legend wrapperStyle={{ paddingTop: "20px" }} /><Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} /><Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[4, 4, 0, 0]} /></BarChart>
-                </ResponsiveContainer>
+            <div style={{ display: "flex", gap: "10px", marginTop: "20px" }}>
+              <button className="btn btn-green" style={{ flex: 1 }} onClick={() => handleSubmit("income")}>+ Income</button>
+              <button className="btn btn-red" style={{ flex: 1 }} onClick={() => handleSubmit("expense")}>- Expense</button>
+            </div>
+            {editingId && <button className="btn" style={{ width: "100%", marginTop: "10px", background: "#e2e8f0" }} onClick={cancelEdit}>Cancel Edit</button>}
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+            
+            <div className="card" style={{ maxHeight: "600px", overflowY: "hidden", display: "flex", flexDirection: "column", marginBottom: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px", flexWrap: "wrap", gap: "10px" }}>
+                <h3 style={{ margin: 0 }}>📜 History</h3>
+                
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", flex: 1, justifyContent: "flex-end", alignItems: "center" }}>
+                  <input className="input-clean" style={{ padding: "8px", fontSize: "0.85rem", width: "130px" }} placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                  <select className="input-clean" style={{ padding: "8px", fontSize: "0.85rem", width: "auto" }} value={filterType} onChange={e => setFilterType(e.target.value)}>
+                    <option value="All">All Types</option><option value="income">Income</option><option value="expense">Expense</option>
+                  </select>
+                  
+                  <span style={{fontSize: "0.85rem", color: "#64748b"}}>From:</span>
+                  <input className="input-clean" type="date" style={{ padding: "8px", fontSize: "0.85rem", width: "auto" }} value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
+                  
+                  <span style={{fontSize: "0.85rem", color: "#64748b"}}>To:</span>
+                  <input className="input-clean" type="date" style={{ padding: "8px", fontSize: "0.85rem", width: "auto" }} value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} />
+
+                  <button className="btn btn-blue" style={{ padding: "8px 15px", fontSize: "0.85rem" }} onClick={applyFilters}>Filter</button>
+                  <button className="btn" style={{ padding: "8px 15px", fontSize: "0.85rem", background: "#e2e8f0" }} onClick={clearFilters}>Clear</button>
+                </div>
               </div>
-            )}
-          </div>
-        )}
 
-        <div style={styles.card}>
-          <h3 style={{ marginTop: 0 }}>{editingId ? "✏️ Edit Transaction" : "➕ Add New Transaction"}</h3>
-          <input style={styles.input} placeholder="Title (e.g., Salary, Rent)" value={title} onChange={(e) => setTitle(e.target.value)} />
-          <input style={styles.input} placeholder="Amount (₹)" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
-          <select style={styles.select} value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="Food">🍔 Food</option><option value="Travel">✈️ Travel</option><option value="Salary">💰 Salary</option><option value="Shopping">🛍️ Shopping</option><option value="Other">📌 Other</option>
-          </select>
-          <input style={styles.input} type="date" value={date} onChange={(e) => setDate(e.target.value)} /><br/><br/>
-          <button style={{ ...styles.btn, ...styles.btnIncome }} onClick={() => handleSubmit("income")}>{editingId ? "Update as Income" : "Add Income"}</button>
-          <button style={{ ...styles.btn, ...styles.btnExpense }} onClick={() => handleSubmit("expense")}>{editingId ? "Update as Expense" : "Add Expense"}</button>
-          {editingId && <button style={{ ...styles.btn, ...styles.btnCancel }} onClick={cancelEdit}>Cancel</button>}
-        </div>
-
-        <div style={{ ...styles.card, backgroundColor: "#f8fafc" }}>
-          <h3 style={{ marginTop: 0 }}>🔍 Search & Filter</h3>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
-            <select style={styles.filterSelect} value={filterType} onChange={(e) => setFilterType(e.target.value)}><option value="All">All Types</option><option value="income">Income Only</option><option value="expense">Expense Only</option></select>
-            <select style={styles.filterSelect} value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}><option value="All">All Categories</option><option value="Food">Food</option><option value="Travel">Travel</option><option value="Salary">Salary</option><option value="Shopping">Shopping</option><option value="Other">Other</option></select>
-            <span style={{ fontSize: "0.9em" }}>From:</span><input style={styles.filterSelect} type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} />
-            <span style={{ fontSize: "0.9em" }}>To:</span><input style={styles.filterSelect} type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} />
-            <button style={{ ...styles.btn, ...styles.btnNeutral }} onClick={applyFilters}>Apply Filter</button>
-            <button style={{ ...styles.btn, ...styles.btnCancel }} onClick={clearFilters}>Clear</button>
-          </div>
-        </div>
-
-        <div style={styles.card}>
-          <h3 style={{ marginTop: 0 }}>📜 Transaction History</h3>
-          {transactions.length === 0 ? <p style={{ color: "#94a3b8", fontStyle: "italic" }}>No transactions match your search.</p> : null}
-          {transactions.map((t) => (
-            <div key={t._id} style={styles.listItem}>
-              <div><b style={{ color: t.type === "income" ? "#10b981" : "#ef4444", fontSize: "1.2em" }}>{t.type === "income" ? "+ " : "- "}₹{t.amount}</b><span style={{ marginLeft: "15px", fontSize: "1.1em", color: "#334155" }}>{t.title}</span><span style={styles.badge}>{t.category || "Other"}</span><span style={styles.dateText}> {t.date ? new Date(t.date).toLocaleDateString() : "No Date"}</span></div>
-              <div><button style={{ ...styles.btn, ...styles.btnEdit }} onClick={() => handleEdit(t)}>Edit</button><button style={{ ...styles.btn, ...styles.btnDanger }} onClick={() => deleteTransaction(t._id)}>Delete</button></div>
+              <div className="scrollable-history" style={{ flex: 1, overflowY: "auto", paddingRight: "5px" }}>
+                {transactions.length === 0 && <p style={{ color: "#94a3b8" }}>No records found.</p>}
+                {transactions.map((t) => (
+                  <div key={t._id} className="history-item">
+                    <div>
+                      <b style={{ color: t.type === "income" ? "#10b981" : "#ef4444", fontSize: "1.1rem" }}>
+                        {t.type === "income" ? "+" : "-"} ₹{t.amount}
+                      </b>
+                      <div style={{ color: "#64748b", fontSize: "0.9rem", marginTop: "4px" }}>
+                        {t.title} <span style={{ background: "#f1f5f9", padding: "4px 8px", borderRadius: "10px", fontSize: "0.75rem", marginLeft: "5px", fontWeight: "bold", color: "#475569" }}>{t.category || "Other"}</span>
+                      </div>
+                      <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginTop: "4px" }}>{new Date(t.date).toLocaleDateString()}</div>
+                    </div>
+                    <div style={{ display: "flex", gap: "15px" }}>
+                      <span style={{ cursor: "pointer", color: "#3b82f6", fontWeight: "bold" }} onClick={() => handleEdit(t)}>Edit</span>
+                      <span style={{ cursor: "pointer", color: "#ef4444", fontWeight: "bold" }} onClick={() => deleteTransaction(t._id)}>Del</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
+
+            {transactions.length > 0 && (
+              <button className="btn btn-dark" onClick={downloadWhitePaper} style={{ width: "100%", padding: "15px", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                <span style={{ fontSize: "1.5rem" }}>📄</span>
+                <div style={{ textAlign: "left" }}>
+                  <div style={{ fontWeight: "bold" }}>Download History Report</div>
+                  <div style={{ fontSize: "0.8rem", opacity: 0.8, marginTop: "2px" }}>Official PDF Report</div>
+                </div>
+              </button>
+            )}
+
+          </div>
         </div>
 
-        <div style={styles.card}>
+        <div className="action-grid" style={{ marginTop: "20px" }}>
+          <div className="card">
+            <h3 style={{ textAlign: "center", marginTop: 0 }}>📊 Overview</h3>
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart><Pie data={pieData} innerRadius={50} outerRadius={70} dataKey="value"><Cell fill="#10b981" /><Cell fill="#ef4444" /></Pie><Tooltip /><Legend /></PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="card">
+            <h3 style={{ textAlign: "center", marginTop: 0 }}>📈 Monthly Trends</h3>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={monthlyChartData}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="income" fill="#10b981" /><Bar dataKey="expense" fill="#ef4444" /></BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginTop: "20px" }}>
           <h3 style={{ marginTop: 0 }}>🧮 Simple Interest Calculator</h3>
-          <input style={styles.input} placeholder="Principal Amount (₹)" onChange={(e) => setInterestData({...interestData, principal: e.target.value})} />
-          <input style={styles.input} placeholder="Rate of Interest (%)" onChange={(e) => setInterestData({...interestData, rate: e.target.value})} />
-          <input style={styles.input} placeholder="Time (in months,ex 2years u enter 24 months)" onChange={(e) => setInterestData({...interestData, time: e.target.value})} /><br/><br/>
-          <button style={{ ...styles.btn, ...styles.btnNeutral }} onClick={calculateInterest}>Calculate</button>
+          <div className="dashboard-grid" style={{ marginBottom: 0 }}>
+            <input className="input-clean" placeholder="Principal (₹)" onChange={(e) => setInterestData({...interestData, principal: e.target.value})} />
+            <input className="input-clean" placeholder="Rate (%)" onChange={(e) => setInterestData({...interestData, rate: e.target.value})} />
+            <input className="input-clean" placeholder="Time (Months)" onChange={(e) => setInterestData({...interestData, time: e.target.value})} />
+          </div>
+          <button className="btn btn-blue" style={{ marginTop: "15px" }} onClick={calculateInterest}>Calculate</button>
+          
           {interestResult.interest !== undefined && (
-            <div style={{ marginTop: "20px", padding: "15px", backgroundColor: "#f0fdf4", borderLeft: "4px solid #10b981", borderRadius: "4px" }}><p style={{ margin: "5px 0" }}>Earned Interest: <b style={{ color: "#3b82f6", fontSize: "1.2em" }}>₹{interestResult.interest}</b></p><p style={{ margin: "5px 0" }}>Total Maturity Amount: <b style={{ color: "#10b981", fontSize: "1.2em" }}>₹{interestResult.total}</b></p></div>
+            <div className="insight-green" style={{ marginTop: "20px", padding: "15px", borderRadius: "8px" }}>
+              <p style={{ margin: "5px 0" }}>Earned Interest: <b>₹{interestResult.interest}</b></p>
+              <p style={{ margin: "5px 0" }}>Total Maturity Amount: <b>₹{interestResult.total}</b></p>
+            </div>
           )}
         </div>
       </div>
 
-      <footer style={styles.footer}>
-        <p style={{ margin: "5px 0", fontWeight: "bold", color: "#475569" }}>Personal Money Management System</p>
-        <p style={{ margin: "5px 0", fontSize: "0.9em" }}>Designed & Developed by</p><h3 style={{ margin: "10px 0", color: "#0f172a" }}>Venkata Pawan Kumar</h3>
-       <a 
-  href="mailto:pavanvenkat63@gmail.com" 
-  style={styles.instagramBtn}
->
-  📧 Contact via Email
-</a>
-<p style={{ marginTop: "15px", fontSize: "0.9em" }}>
-                    Check out our other app: <a href="https://bhavyams-vendor-hub-vpk.vercel.app/" target="_blank" rel="noopener noreferrer" style={{ color: "#3b82f6", textDecoration: "none", fontWeight: "bold" }}>Bhavyams VendorHub</a>
-                </p>
+      <footer style={{ textAlign: "center", padding: "40px 20px", marginTop: "40px", color: "#64748b", backgroundColor: "white", borderTop: "1px solid #e2e8f0" }}>
+        <p style={{ margin: "5px 0", fontWeight: "bold" }}>Personal Money Management System</p>
+        <p style={{ margin: "5px 0", fontSize: "0.9em" }}>Designed & Developed by</p>
+        <h3 style={{ margin: "10px 0", color: "#0f172a" }}>Venkata Pavan Kumar</h3>
+        <p style={{ marginTop: "15px", fontSize: "0.9em" }}>
+          Check out our other app: <a href="https://bhavyams-vendor-hub-vpk.vercel.app/" target="_blank" rel="noopener noreferrer" style={{ color: "#3b82f6", textDecoration: "none", fontWeight: "bold" }}>Bhavyams VendorHub</a>
+        </p>
       </footer>
+
     </div>
   );
 }
 
 export default App;
-  

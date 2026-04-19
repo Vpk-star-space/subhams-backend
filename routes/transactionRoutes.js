@@ -11,6 +11,7 @@ router.get("/insights", auth, ctrl.getInsights);
 router.get("/summary", auth, ctrl.getSummary);
 router.post("/interest", auth, ctrl.calculateInterest);
 
+
 // THESE TWO LINES ARE CRITICAL FOR EDIT AND DELETE
 router.put("/:id", auth, ctrl.updateTransaction);
 router.delete("/:id", auth, ctrl.deleteTransaction);
