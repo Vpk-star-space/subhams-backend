@@ -14,7 +14,7 @@ const transactionRoutes = require("./routes/transactionRoutes");
 
 const app = express();
 app.use(cors({
-    origin: ["http://localhost:3000", "https://subhams-vpk.vercel.app/"], // Add your deployed URL here
+    origin: [ "https://subhams-vpk.vercel.app/"], // Add your deployed URL here
     credentials: true
 }));
 
