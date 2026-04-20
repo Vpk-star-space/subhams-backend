@@ -1,24 +1,25 @@
 const cron = require('node-cron');
 const pool = require('../config/db');
-// 🚀 FIXED: Importing the correct function name from your emailService
 const { sendInactivityInsight } = require('./emailService'); 
 
 const startInactivityWatcher = () => {
-  // This runs every minute to check the "clocks" of all users
+  // This runs every minute to check the clocks
   cron.schedule('* * * * *', async () => {
-    console.log("🔍 Checking for inactive users...");
     
     try {
-      // 🚀 REDUCED TIME: Checks for users inactive between 2 and 3 minutes ago
+      // 🟢 THE FIX: 
+      // 1. Are they offline for exactly 6 minutes?
+      // 2. DID THEY MAKE CHANGES? (has_changes = true)
       const result = await pool.query(`
         SELECT id, username, email 
         FROM users 
-        WHERE last_active <= NOW() - INTERVAL '2 minutes'
-        AND last_active > NOW() - INTERVAL '3 minutes'
+        WHERE last_active <= NOW() - INTERVAL '6 minutes'
+        AND last_active > NOW() - INTERVAL '7 minutes'
+        AND has_changes = true
       `);
 
       if (result.rows.length > 0) {
-        console.log(`⚠️ Found ${result.rows.length} inactive users. Sending insights...`);
+        console.log(`⚠️ Found ${result.rows.length} users with changes who went offline. Sending email...`);
         
         for (const user of result.rows) {
           // Calculate the financial summary for the email
@@ -40,9 +41,11 @@ const startInactivityWatcher = () => {
           };
 
           // Send the beautiful bilingual email
-          sendInactivityInsight(user.email, user.username, summary)
-            .then(() => console.log(`✅ Email sent to ${user.email}`))
-            .catch(err => console.error(`❌ Email failed for ${user.email}:`, err));
+          await sendInactivityInsight(user.email, user.username, summary);
+          console.log(`✅ Offline Email sent to ${user.email}`);
+
+          // 🟢 TURN THE SWITCH OFF: Email sent, waiting for the next change.
+          await pool.query("UPDATE users SET has_changes = false WHERE id = $1", [user.id]);
         }
       }
     } catch (err) {

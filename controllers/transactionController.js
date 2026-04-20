@@ -9,9 +9,12 @@ exports.addTransaction = async (req, res) => {
     const result = await pool.query(
       `INSERT INTO transactions (user_id, title, amount, type, category, date) 
        VALUES ($1, $2, $3, $4, $5, $6) 
-       RETURNING *, id AS "_id"`, // We return 'id AS _id' so React doesn't break
+       RETURNING *, id AS "_id"`,
       [userId, title, amount, type, category, date]
     );
+
+    // 🟢 FLIP THE SWITCH: User made a change!
+    await pool.query("UPDATE users SET has_changes = true WHERE id = $1", [userId]);
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -37,14 +40,12 @@ exports.getTransactions = async (req, res) => {
 // ================= 3. FILTER & SEARCH TRANSACTIONS =================
 exports.filterTransactions = async (req, res) => {
   try {
-    // 🚀 NEW: Notice we added 'search' here to catch what the frontend sends!
     const { type, category, startDate, endDate, search } = req.query;
     
     let query = `SELECT *, id AS "_id" FROM transactions WHERE user_id = $1`;
     let values = [req.user.userId];
     let count = 2; 
 
-    // 1. Dropdown Filters
     if (type && type !== "All") {
       query += ` AND type = $${count}`;
       values.push(type);
@@ -56,16 +57,12 @@ exports.filterTransactions = async (req, res) => {
       count++;
     }
     
-    // 2. Date Range Filter
     if (startDate && endDate) {
       query += ` AND date >= $${count} AND date <= $${count + 1}`;
       values.push(startDate, endDate);
       count += 2;
     }
 
-    // 3. 🚀 THE SEARCH BAR LOGIC
-    // ILIKE makes it case-insensitive (so "Rent" and "rent" both work)
-    // CAST(amount AS TEXT) allows them to search for numbers like "500"
     if (search && search.trim() !== "") {
       query += ` AND (title ILIKE $${count} OR CAST(amount AS TEXT) ILIKE $${count})`;
       values.push(`%${search.trim()}%`);
@@ -76,7 +73,6 @@ exports.filterTransactions = async (req, res) => {
     
     const result = await pool.query(query, values);
     res.json(result.rows);
-    
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -113,6 +109,10 @@ exports.updateTransaction = async (req, res) => {
        RETURNING *, id AS "_id"`,
       [title, amount, type, category, date, req.params.id, req.user.userId]
     );
+
+    // 🟢 FLIP THE SWITCH: User made a change!
+    await pool.query("UPDATE users SET has_changes = true WHERE id = $1", [req.user.userId]);
+
     res.json(result.rows[0]);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -129,6 +129,10 @@ exports.deleteTransaction = async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ message: "Transaction not found" });
     }
+
+    // 🟢 FLIP THE SWITCH: User made a change!
+    await pool.query("UPDATE users SET has_changes = true WHERE id = $1", [req.user.userId]);
+
     res.json({ message: "Deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -196,6 +200,3 @@ exports.calculateInterest = (req, res) => {
   const interest = (Number(principal) * Number(rate) * Number(time)) / 100;
   res.json({ interest, total: Number(principal) + interest });
 };
-
-
-
