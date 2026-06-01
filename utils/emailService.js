@@ -93,9 +93,14 @@ const sendWelcomeEmail = async (email, username) => {
   await sendBrevoEmail(email, subject, html);
 };
 
-// 🚀 3. Transaction Update Email (Now includes Pending and PDF announcement)
+// 🚀 3. Transaction Update Email (Matches your App UI exactly)
 const sendInactivityInsight = async (email, username, summary) => {
   const subject = "Subhams PMMS: Transaction Saved Successfully! 📊";
+  
+  // 🟢 This generates a unique random number every time the email sends.
+  // We hide this in the footer so Gmail NEVER clips or hides your text again!
+  const uniqueId = Date.now(); 
+
   const html = `
     <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f1f5f9; padding: 20px;">
       <div style="max-width: 550px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
@@ -138,13 +143,18 @@ const sendInactivityInsight = async (email, username, summary) => {
             </p>
           </div>
 
-          <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 25px; font-style: italic;">
-            🚀 Coming Soon: You will soon be able to download this report as a highly secure PDF right from your dashboard!
-          </p>
+          <!-- 🟢 UPDATED: Current Feature Highlight Box -->
+          <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; border: 1px dashed #cbd5e1; margin-top: 25px; text-align: center;">
+            <p style="color: #64748b; font-size: 13px; margin: 0; line-height: 1.6;">
+              🚀 <b>Feature Highlight:</b> You can easily download your complete history or individual transactions in PDF format directly from your dashboard! You can also share specific transactions to yourself or others, making it simple to manage your financial records.
+            </p>
+          </div>
         </div>
 
-        <div style="background-color: #f8fafc; padding: 15px; font-size: 12px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0;">
+        <!-- 🟢 UPDATED: Gmail clipping fix! The span is invisible but makes the email unique -->
+        <div style="background-color: #f1f5f9; padding: 15px; font-size: 13px; color: #475569; font-weight: bold; text-align: center; border-top: 1px solid #e2e8f0;">
           Stay disciplined. Stay wealthy. - Subhams PMMS
+          <span style="display: none; color: transparent; font-size: 0px;">&nbsp;[ID: ${uniqueId}]</span>
         </div>
       </div>
     </div>
