@@ -78,21 +78,23 @@ exports.filterTransactions = async (req, res) => {
   }
 };
 
-// ================= 4. SUMMARY =================
+// ================= 4. SUMMARY (🟢 UPGRADED FOR PENDING) =================
 exports.getSummary = async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
         COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS income,
-        COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS expense
+        COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS expense,
+        COALESCE(SUM(CASE WHEN type = 'pending' THEN amount ELSE 0 END), 0) AS pending
       FROM transactions 
       WHERE user_id = $1
     `, [req.user.userId]);
 
     const income = Number(result.rows[0].income);
     const expense = Number(result.rows[0].expense);
+    const pending = Number(result.rows[0].pending); // 🟢 Now tracks Pending securely!
 
-    res.json({ income, expense, balance: income - expense });
+    res.json({ income, expense, pending, balance: income - expense });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -139,7 +141,7 @@ exports.deleteTransaction = async (req, res) => {
   }
 };
 
-// ================= 7. MONTHLY GRAPH DATA =================
+// ================= 7. MONTHLY GRAPH DATA (🟢 UPGRADED FOR PENDING) =================
 exports.getMonthlyData = async (req, res) => {
   try {
     const result = await pool.query(`
@@ -157,13 +159,17 @@ exports.getMonthlyData = async (req, res) => {
     const formattedData = result.rows.reduce((acc, item) => {
       const monthName = new Date(item.year, item.month - 1).toLocaleString('default', { month: 'short' });
       const yearMonth = `${monthName} ${item.year}`;
+      
       let existingMonth = acc.find(m => m.name === yearMonth);
       if (!existingMonth) {
-        existingMonth = { name: yearMonth, income: 0, expense: 0 };
+        existingMonth = { name: yearMonth, income: 0, expense: 0, pending: 0 };
         acc.push(existingMonth);
       }
+      
       if (item.type === "income") existingMonth.income = Number(item.total);
       if (item.type === "expense") existingMonth.expense = Number(item.total);
+      if (item.type === "pending") existingMonth.pending = Number(item.total); // 🟢 Prevents graphing errors!
+      
       return acc;
     }, []);
 

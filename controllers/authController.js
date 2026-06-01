@@ -6,6 +6,68 @@ const { sendOTPEmail, sendWelcomeEmail } = require("../utils/emailService");
 const { OAuth2Client } = require("google-auth-library");
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+// ================= REGISTER BIOMETRIC KEY =================
+const registerBiometric = async (req, res) => {
+  try {
+    const { credentialId } = req.body;
+    const userId = req.user.userId;
+
+    if (!credentialId) {
+      return res.status(400).json({ error: "Missing biometric credential data." });
+    }
+
+    await pool.query(
+      "UPDATE users SET biometric_key = $1 WHERE id = $2",
+      [credentialId, userId]
+    );
+
+    res.json({ message: "Biometric authentication linked successfully! 🔒" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// ================= LOGIN WITH BIOMETRIC KEY =================
+const loginBiometric = async (req, res) => {
+  try {
+    const { credentialId, username } = req.body;
+
+    const userRes = await pool.query(
+      "SELECT id, username, biometric_key FROM users WHERE username = $1",
+      [username]
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: "User not found. Please log in with password first." });
+    }
+
+    const user = userRes.rows[0];
+
+    if (!user.biometric_key || user.biometric_key !== credentialId) {
+      return res.status(401).json({ error: "Biometric verification failed. Unrecognized device." });
+    }
+
+    // 🟢 FIXED: Now uses the exact same environment variables as Google Login!
+    const accessToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const refreshToken = jwt.sign({ userId: user.id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '30d' });
+
+    // 🟢 FIXED: Update the refresh token in the database for biometric logins too!
+    await pool.query(
+      "UPDATE users SET refresh_token = $1 WHERE id = $2",
+      [refreshToken, user.id]
+    );
+
+    res.json({
+      message: "Welcome back! Unlocked via Biometrics.",
+      accessToken,
+      refreshToken,
+      user: { id: user.id, username: user.username }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 // ================= 1. GOOGLE LOGIN =================
 const googleLogin = async (req, res) => {
   try {
@@ -22,7 +84,6 @@ const googleLogin = async (req, res) => {
     let user = userResult.rows[0];
 
     if (!user) {
-      // Create a unique username from their email (e.g., "pavanvenkat63")
       const safeUsername = email.split("@")[0]; 
 
       const newUser = await pool.query(
@@ -31,15 +92,12 @@ const googleLogin = async (req, res) => {
       );
       user = newUser.rows[0];
 
-      // Send welcome email with name
       sendWelcomeEmail(email, name).catch(err => console.error("Welcome email failed:", err));
     }
 
-    // Generate Tokens
     const accessToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "7d" });
     const refreshToken = jwt.sign({ userId: user.id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: "30d" });
 
-    // UPDATE BOTH last_active AND refresh_token!
     await pool.query(
       "UPDATE users SET last_active = NOW(), refresh_token = $1 WHERE id = $2", 
       [refreshToken, user.id]
@@ -52,6 +110,7 @@ const googleLogin = async (req, res) => {
     res.status(400).json({ error: "Google authentication failed" });
   }
 };
+
 // ================= 2. REGISTER (SEND OTP) =================
 const registerUser = async (req, res) => {
   try {
@@ -130,7 +189,6 @@ const verifyOTP = async (req, res) => {
 
     await pool.query("DELETE FROM otps WHERE email = $1", [email]);
 
-    // Send Welcome Email
     sendWelcomeEmail(email, username).catch(err => console.error("Welcome email failed:", err));
 
     res.json({ message: "Registration successful! You can now log in." });
@@ -164,7 +222,6 @@ const loginUser = async (req, res) => {
       return res.status(400).json({ error: "Invalid credentials" });
     }
 
-    // 🚀 FIXED: Tokens now last 7 days
     const accessToken = jwt.sign(
       { userId: user.id }, 
       process.env.JWT_SECRET,
@@ -203,7 +260,6 @@ const refreshAccessToken = async (req, res) => {
        return res.status(403).json({ error: "Invalid refresh token" });
     }
 
-    // 🚀 FIXED: New Access Token lasts 7 days
     const newAccessToken = jwt.sign(
       { userId: user.id },
       process.env.JWT_SECRET,
@@ -216,4 +272,4 @@ const refreshAccessToken = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, refreshAccessToken, verifyOTP, googleLogin};
+module.exports = { registerUser, loginUser, refreshAccessToken, verifyOTP, googleLogin, registerBiometric, loginBiometric };

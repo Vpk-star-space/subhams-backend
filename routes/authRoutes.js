@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const authController = require("../controllers/authController");
 const rateLimit = require("express-rate-limit");
+const  protect  = require("../middleware/authMiddleware");
 
 // 🛡️ SECURITY: Limit attempts to 10 every 15 minutes to prevent spam
 const authLimiter = rateLimit({
@@ -19,5 +20,8 @@ router.post("/verify-otp", authController.verifyOTP);
 router.post("/login", authLimiter, authController.loginUser);
 router.post("/google-login", authLimiter, authController.googleLogin);
 router.post("/refresh", authController.refreshAccessToken);
+// 🟢 NEW: Biometric WebAuthn Routes
+router.post('/register-biometric', protect, authController.registerBiometric); // 🟢 FIXED: Added protect
+router.post('/login-biometric', authController.loginBiometric);
 
 module.exports = router;
