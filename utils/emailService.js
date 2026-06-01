@@ -93,12 +93,12 @@ const sendWelcomeEmail = async (email, username) => {
   await sendBrevoEmail(email, subject, html);
 };
 
-// 🚀 3. Transaction Update Email (Matches your App UI exactly)
+// 🚀 3. Transaction Update Email (Now includes Pending and PDF announcement)
 const sendInactivityInsight = async (email, username, summary) => {
   const subject = "Subhams PMMS: Transaction Saved Successfully! 📊";
   const html = `
     <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f1f5f9; padding: 20px;">
-      <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
+      <div style="max-width: 550px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
         
         <div style="background-color: #0f172a; padding: 20px; text-align: center;">
           <h1 style="margin: 0; color: #facc15; font-size: 28px; font-weight: 900; letter-spacing: -1px;">Subhams</h1>
@@ -111,19 +111,23 @@ const sendInactivityInsight = async (email, username, summary) => {
             Hello <b>${username}</b>, your latest transaction has been safely recorded. Here is your updated financial snapshot:
           </p>
           
-          <table width="100%" cellpadding="0" cellspacing="0" style="background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 25px; text-align: center;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 20px; text-align: center;">
             <tr>
-              <td style="padding: 15px 10px; width: 33%;">
+              <td style="padding: 15px 5px; width: 25%;">
                 <div style="font-size: 10px; color: #64748b; font-weight: bold; margin-bottom: 5px;">INCOME <br/> ఆదాయం</div>
-                <div style="color: #10b981; font-weight: 900; font-size: 18px;">₹${summary.income}</div>
+                <div style="color: #10b981; font-weight: 900; font-size: 16px;">₹${summary.income}</div>
               </td>
-              <td style="padding: 15px 10px; width: 33%; border-left: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0;">
+              <td style="padding: 15px 5px; width: 25%; border-left: 1px solid #e2e8f0;">
                 <div style="font-size: 10px; color: #64748b; font-weight: bold; margin-bottom: 5px;">EXPENSE <br/> ఖర్చు</div>
-                <div style="color: #ef4444; font-weight: 900; font-size: 18px;">₹${summary.expense}</div>
+                <div style="color: #ef4444; font-weight: 900; font-size: 16px;">₹${summary.expense}</div>
               </td>
-              <td style="padding: 15px 10px; width: 33%;">
+              <td style="padding: 15px 5px; width: 25%; border-left: 1px solid #e2e8f0;">
+                <div style="font-size: 10px; color: #64748b; font-weight: bold; margin-bottom: 5px;">PENDING <br/> పెండింగ్</div>
+                <div style="color: #f59e0b; font-weight: 900; font-size: 16px;">₹${summary.pending}</div>
+              </td>
+              <td style="padding: 15px 5px; width: 25%; border-left: 1px solid #e2e8f0;">
                 <div style="font-size: 10px; color: #64748b; font-weight: bold; margin-bottom: 5px;">BALANCE <br/> నిల్వ</div>
-                <div style="color: #3b82f6; font-weight: 900; font-size: 18px;">₹${summary.balance}</div>
+                <div style="color: #3b82f6; font-weight: 900; font-size: 16px;">₹${summary.balance}</div>
               </td>
             </tr>
           </table>
@@ -133,6 +137,10 @@ const sendInactivityInsight = async (email, username, summary) => {
               <b>Telugu Update:</b> మీ లావాదేవీ విజయవంతంగా సేవ్ చేయబడింది. మీ ఖాతాలో ప్రస్తుతం <b>₹${summary.balance}</b> బ్యాలెన్స్ ఉంది.
             </p>
           </div>
+
+          <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 25px; font-style: italic;">
+            🚀 Coming Soon: You will soon be able to download this report as a highly secure PDF right from your dashboard!
+          </p>
         </div>
 
         <div style="background-color: #f8fafc; padding: 15px; font-size: 12px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0;">

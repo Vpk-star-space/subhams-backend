@@ -7,7 +7,6 @@ const startInactivityWatcher = () => {
   cron.schedule('* * * * *', async () => {
     
     try {
-      // 🟢 THE FIX: 
       // 1. Are they offline for exactly 6 minutes?
       // 2. DID THEY MAKE CHANGES? (has_changes = true)
       const result = await pool.query(`
@@ -22,21 +21,24 @@ const startInactivityWatcher = () => {
         console.log(`⚠️ Found ${result.rows.length} users with changes who went offline. Sending email...`);
         
         for (const user of result.rows) {
-          // Calculate the financial summary for the email
+          // Calculate the financial summary for the email (NOW INCLUDING PENDING)
           const sumResult = await pool.query(`
             SELECT 
               COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS income,
-              COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS expense
+              COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS expense,
+              COALESCE(SUM(CASE WHEN type = 'pending' THEN amount ELSE 0 END), 0) AS pending
             FROM transactions 
             WHERE user_id = $1
           `, [user.id]);
 
           const income = Number(sumResult.rows[0].income);
           const expense = Number(sumResult.rows[0].expense);
+          const pending = Number(sumResult.rows[0].pending);
           
           const summary = {
             income,
             expense,
+            pending,
             balance: income - expense
           };
 
@@ -44,7 +46,7 @@ const startInactivityWatcher = () => {
           await sendInactivityInsight(user.email, user.username, summary);
           console.log(`✅ Offline Email sent to ${user.email}`);
 
-          // 🟢 TURN THE SWITCH OFF: Email sent, waiting for the next change.
+          // TURN THE SWITCH OFF: Email sent, waiting for the next change.
           await pool.query("UPDATE users SET has_changes = false WHERE id = $1", [user.id]);
         }
       }
