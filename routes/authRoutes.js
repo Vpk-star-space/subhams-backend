@@ -4,28 +4,45 @@ const authController = require("../controllers/authController");
 const rateLimit = require("express-rate-limit");
 const protect = require("../middleware/authMiddleware");
 
-// 🛡️ INCREASED LIMIT FOR TESTING: Allows 50 attempts per 15 minutes
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, 
-  max: 50, 
-  message: { error: "Too many attempts. Please try again after 15 minutes." },
-  standardHeaders: true,
-  legacyHeaders: false,
+// 🛡️ 1. OTP LIMITER: Extremely strict (prevents email spam/costs)
+const otpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5, // Only 5 OTP requests per 15 mins per IP/Email
+  message: { error: "Too many OTP requests. Please wait 15 minutes." },
 });
 
-// 🚀 REGULAR ROUTES
-router.post("/register", authLimiter, authController.registerUser);
-router.post("/verify-otp", authController.verifyOTP);
-router.post("/login", authLimiter, authController.loginUser);
-router.post("/google-login", authLimiter, authController.googleLogin);
-router.post("/refresh", authController.refreshAccessToken);
+// 🛡️ 2. GOOGLE LIMITER: Separate bucket
+const googleLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5, // Google is secure, so we allow more attempts
+  message: { error: "Too many Google login attempts. Please wait." },
+});
 
-// 🟢 NEW: FORGOT PASSWORD ROUTES
-router.post("/forgot-password", authLimiter, authController.requestPasswordReset);
-router.post("/reset-password", authLimiter, authController.resetPassword);
+// 🛡️ 3. GENERAL LIMITER: For standard Login/Register
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5, // 5 attempts per 15 mins for login/register
+  message: { error: "Too many requests. Please try again later." },
+});
+
+// 🚀 ROUTES
+// Registration uses OTP limiter
+router.post("/register", otpLimiter, authController.registerUser);
+router.post("/verify-otp", otpLimiter, authController.verifyOTP);
+
+// Login uses general/google limiters
+router.post("/login", generalLimiter, authController.loginUser);
+router.post("/google-login", googleLimiter, authController.googleLogin);
+
+// Forgot Password uses OTP limiter
+router.post("/forgot-password", otpLimiter, authController.requestPasswordReset);
+router.post("/reset-password", otpLimiter, authController.resetPassword);
+
+// Refresh is token-based (less prone to spam, high limit is fine)
+router.post("/refresh", authController.refreshAccessToken);
 
 // 🔒 BIOMETRIC ROUTES
 router.post('/register-biometric', protect, authController.registerBiometric); 
-router.post('/login-biometric', authController.loginBiometric);
+router.post('/login-biometric', generalLimiter, authController.loginBiometric);
 
 module.exports = router;
