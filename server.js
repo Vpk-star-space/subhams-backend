@@ -9,6 +9,8 @@ const transactionRoutes = require("./routes/transactionRoutes");
 
 const app = express();
 
+app.set("trust proxy", 1);
+
 // 🛠️ FIXED CORS: Only one instance, no trailing slash, and allows credentials
 app.use(cors({
     origin: ["https://subhams-vpk.vercel.app", "http://localhost:3000"],
