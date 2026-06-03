@@ -90,7 +90,12 @@ const googleLogin = async (req, res) => {
       );
       user = newUser.rows[0];
 
-      sendWelcomeEmail(email, name).catch(err => console.error("Welcome email failed:", err));
+      // 🟢 FIXED: Await the email so Render doesn't kill the process
+      try {
+        await sendWelcomeEmail(email, name);
+      } catch (err) {
+        console.error("Welcome email failed:", err);
+      }
     }
 
     const accessToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "7d" });
@@ -139,7 +144,12 @@ const registerUser = async (req, res) => {
       [email, otp, expiresAt]
     );
 
-    sendOTPEmail(email, otp).catch(err => console.error("OTP Email failed:", err));
+    // 🟢 FIXED: Await the OTP email so Render actually sends it!
+    try {
+      await sendOTPEmail(email, otp);
+    } catch (err) {
+      console.error("OTP Email failed:", err);
+    }
 
     res.json({ message: "OTP sent! Please check your email." });
 
@@ -187,7 +197,12 @@ const verifyOTP = async (req, res) => {
 
     await pool.query("DELETE FROM otps WHERE email = $1", [email]);
 
-    sendWelcomeEmail(email, username).catch(err => console.error("Welcome email failed:", err));
+    // 🟢 FIXED: Await Welcome email
+    try {
+      await sendWelcomeEmail(email, username);
+    } catch (err) {
+      console.error("Welcome email failed:", err);
+    }
 
     res.json({ message: "Registration successful! You can now log in." });
 
@@ -207,7 +222,8 @@ const loginUser = async (req, res) => {
 
     username = username.toLowerCase().trim();
 
-    const result = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
+    // 🟢 FIXED: Check BOTH username AND email so we can properly catch Google users who type their email here!
+    const result = await pool.query("SELECT * FROM users WHERE username = $1 OR email = $1", [username]);
     
     if (result.rows.length === 0) {
       return res.status(400).json({ error: "Invalid credentials" });
@@ -215,7 +231,7 @@ const loginUser = async (req, res) => {
 
     const user = result.rows[0];
 
-    // 🟢 NEW: Prevent Google Users from using normal password login
+    // Check for Google accounts to give them the proper warning
     if (user.auth_provider === 'google' || user.password === 'google_authenticated') {
       return res.status(400).json({ error: "You signed up with Google. Please click the Google Login button below." });
     }
@@ -287,7 +303,6 @@ const requestPasswordReset = async (req, res) => {
 
     const user = userRes.rows[0];
 
-    // 🟢 NEW: Prevent Google Users from trying to reset a password they don't have
     if (user.auth_provider === 'google' || user.password === 'google_authenticated') {
       return res.status(400).json({ error: "This email uses Google Login. You don't need a password! Please go back and click the Google Login button." });
     }
@@ -298,7 +313,13 @@ const requestPasswordReset = async (req, res) => {
     await pool.query("DELETE FROM otps WHERE email = $1", [email]);
     await pool.query("INSERT INTO otps (email, otp, expires_at) VALUES ($1, $2, $3)", [email, otp, expiresAt]);
 
-    sendOTPEmail(email, otp).catch(err => console.error(err));
+    // 🟢 FIXED: Await the OTP email so Render actually sends it!
+    try {
+      await sendOTPEmail(email, otp);
+    } catch (err) {
+      console.error("OTP Email failed:", err);
+    }
+
     res.json({ message: "Password reset OTP sent to your email!" });
   } catch (err) { 
     res.status(500).json({ error: "Server error." }); 
@@ -334,7 +355,6 @@ const resetPassword = async (req, res) => {
   }
 };
 
-// Export ALL functions now!
 module.exports = { 
   registerUser, 
   loginUser, 
