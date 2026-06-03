@@ -21,7 +21,7 @@ const googleLimiter = rateLimit({
 // 🛡️ 3. GENERAL LIMITER: For standard Login/Register
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5, // 5 attempts per 15 mins for login/register
+  max: 2, // 2 attempts per 15 mins for login/register
   message: { error: "Too many requests. Please try again later." },
 });
 
