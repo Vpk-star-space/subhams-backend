@@ -47,11 +47,9 @@ const loginBiometric = async (req, res) => {
       return res.status(401).json({ error: "Biometric verification failed. Unrecognized device." });
     }
 
-    // 🟢 FIXED: Now uses the exact same environment variables as Google Login!
     const accessToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
     const refreshToken = jwt.sign({ userId: user.id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '30d' });
 
-    // 🟢 FIXED: Update the refresh token in the database for biometric logins too!
     await pool.query(
       "UPDATE users SET refresh_token = $1 WHERE id = $2",
       [refreshToken, user.id]
@@ -217,6 +215,11 @@ const loginUser = async (req, res) => {
 
     const user = result.rows[0];
 
+    // 🟢 NEW: Prevent Google Users from using normal password login
+    if (user.auth_provider === 'google' || user.password === 'google_authenticated') {
+      return res.status(400).json({ error: "You signed up with Google. Please click the Google Login button below." });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ error: "Invalid credentials" });
@@ -272,4 +275,74 @@ const refreshAccessToken = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, refreshAccessToken, verifyOTP, googleLogin, registerBiometric, loginBiometric };
+// 🟢 ================= 6. FORGOT PASSWORD =================
+const requestPasswordReset = async (req, res) => {
+  try {
+    let { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Please provide your email address." });
+
+    email = email.toLowerCase().trim();
+    const userRes = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    if (userRes.rows.length === 0) return res.status(404).json({ error: "No account found with this email." });
+
+    const user = userRes.rows[0];
+
+    // 🟢 NEW: Prevent Google Users from trying to reset a password they don't have
+    if (user.auth_provider === 'google' || user.password === 'google_authenticated') {
+      return res.status(400).json({ error: "This email uses Google Login. You don't need a password! Please go back and click the Google Login button." });
+    }
+
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    await pool.query("DELETE FROM otps WHERE email = $1", [email]);
+    await pool.query("INSERT INTO otps (email, otp, expires_at) VALUES ($1, $2, $3)", [email, otp, expiresAt]);
+
+    sendOTPEmail(email, otp).catch(err => console.error(err));
+    res.json({ message: "Password reset OTP sent to your email!" });
+  } catch (err) { 
+    res.status(500).json({ error: "Server error." }); 
+  }
+};
+
+// 🟢 ================= 7. RESET PASSWORD =================
+const resetPassword = async (req, res) => {
+  try {
+    let { email, otp, newPassword } = req.body;
+    if (!email || !otp || !newPassword) return res.status(400).json({ error: "All fields are required." });
+
+    email = email.toLowerCase().trim();
+    const otpRecord = await pool.query("SELECT * FROM otps WHERE email = $1", [email]);
+    if (otpRecord.rows.length === 0) return res.status(400).json({ error: "No OTP request found." });
+
+    const validOtp = otpRecord.rows[0];
+    if (validOtp.otp !== otp) return res.status(400).json({ error: "Invalid OTP code." });
+    if (new Date(validOtp.expires_at) < new Date()) {
+      await pool.query("DELETE FROM otps WHERE email = $1", [email]);
+      return res.status(400).json({ error: "OTP has expired." });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    await pool.query("UPDATE users SET password = $1 WHERE email = $2", [hashedPassword, email]);
+    await pool.query("DELETE FROM otps WHERE email = $1", [email]);
+
+    res.json({ message: "Password successfully reset! You can now log in." });
+  } catch (err) { 
+    res.status(500).json({ error: "Server error." }); 
+  }
+};
+
+// Export ALL functions now!
+module.exports = { 
+  registerUser, 
+  loginUser, 
+  refreshAccessToken, 
+  verifyOTP, 
+  googleLogin, 
+  registerBiometric, 
+  loginBiometric, 
+  requestPasswordReset, 
+  resetPassword 
+};

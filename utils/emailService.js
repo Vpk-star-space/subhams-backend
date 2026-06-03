@@ -30,6 +30,7 @@ const sendBrevoEmail = async (toEmail, subject, htmlContent) => {
 // 🚀 1. The OTP Email Template (Beautiful & Bilingual)
 const sendOTPEmail = async (email, otp) => {
   const subject = "Your Subhams Verification Code | మీ వెరిఫికేషన్ కోడ్ 🔐";
+   const uniqueId = Date.now(); 
   const html = `
     <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f1f5f9; padding: 20px; text-align: center;">
       <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
@@ -63,30 +64,65 @@ const sendOTPEmail = async (email, otp) => {
 // 🚀 2. Welcome Email (Professional SaaS Design)
 const sendWelcomeEmail = async (email, username) => {
   const subject = "Welcome to Subhams PMMS! | సుభమ్స్ కి స్వాగతం! 🎉";
+  
+  // 🟢 Gmail anti-clipping fix
+  const uniqueId = Date.now(); 
+
   const html = `
-    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f1f5f9; padding: 20px;">
-      <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
+    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; padding: 40px 20px; color: #334155;">
+      <div style="max-width: 550px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
         
-        <div style="background-color: #0f172a; padding: 20px; text-align: center;">
-          <h1 style="margin: 0; color: #facc15; font-size: 28px; font-weight: 900; letter-spacing: -1px;">Subhams</h1>
+        <!-- 🟢 Premium Gradient Header -->
+        <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 35px 20px; text-align: center;">
+          <h1 style="margin: 0; color: #f59e0b; font-size: 32px; font-weight: 900; letter-spacing: -1px;">SUBHAMS</h1>
+          <p style="margin: 8px 0 0 0; color: #94a3b8; font-size: 14px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase;">Personal Money Management</p>
         </div>
 
-        <div style="padding: 30px 20px;">
-          <h2 style="color: #1e293b; margin-top: 0;">Hello ${username || 'User'},</h2>
+        <div style="padding: 40px 30px;">
+          <h2 style="color: #0f172a; margin-top: 0; font-size: 24px;">Hello ${username || 'User'}, welcome aboard! 🚀</h2>
           
-          <p style="color: #475569; font-size: 15px; line-height: 1.6;">
-            <b>English:</b> Your account is successfully verified! You can now start tracking your daily income and expenses to secure your financial future.
+          <p style="color: #475569; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
+            We are thrilled to have you! Your account is fully verified. You are now equipped with the ultimate tool to track your daily income, manage your expenses, and secure your financial future.
           </p>
           
-          <p style="color: #10b981; font-size: 15px; line-height: 1.6; font-weight: bold; background: #f0fdf4; padding: 15px; border-radius: 8px; border-left: 4px solid #10b981;">
-            తెలుగు: మీ ఖాతా విజయవంతంగా ధృవీకరించబడింది! మీ ఆర్థిక భవిష్యత్తును సురక్షితం చేసుకోవడానికి మీ రోజువారీ ఆదాయం మరియు ఖర్చులను ట్రాక్ చేయడం ప్రారంభించండి.
-          </p>
+          <!-- 🟢 Beautiful Bilingual Highlight Box -->
+          <div style="background: #f0fdf4; padding: 20px; border-radius: 12px; border-left: 5px solid #10b981; margin-bottom: 30px;">
+            <p style="margin: 0; color: #065f46; font-size: 15px; line-height: 1.6; font-weight: bold;">
+              తెలుగు: మీ ఖాతా విజయవంతంగా ధృవీకరించబడింది! మీ ఆర్థిక భవిష్యత్తును సురక్షితం చేసుకోవడానికి మీ రోజువారీ ఆదాయం మరియు ఖర్చులను ట్రాక్ చేయడం ప్రారంభించండి.
+            </p>
+          </div>
+
+          <!-- 🟢 Feature Showcase -->
+          <h3 style="color: #1e293b; font-size: 18px; margin-bottom: 15px;">What you can do right now:</h3>
+          <ul style="padding: 0; margin: 0 0 35px 0; list-style: none;">
+            <li style="margin-bottom: 15px; font-size: 15px; color: #475569; display: flex; align-items: center;">
+              <span style="background: #eff6ff; color: #3b82f6; padding: 6px 8px; border-radius: 8px; margin-right: 12px; font-size: 14px;">📊</span> <b>Track Finances:</b> Add daily incomes and pending expenses.
+            </li>
+            <li style="margin-bottom: 15px; font-size: 15px; color: #475569; display: flex; align-items: center;">
+              <span style="background: #eff6ff; color: #3b82f6; padding: 6px 8px; border-radius: 8px; margin-right: 12px; font-size: 14px;">📄</span> <b>Export Data:</b> Download official PDF White Papers of your history.
+            </li>
+            <li style="margin-bottom: 15px; font-size: 15px; color: #475569; display: flex; align-items: center;">
+              <span style="background: #eff6ff; color: #3b82f6; padding: 6px 8px; border-radius: 8px; margin-right: 12px; font-size: 14px;">🔒</span> <b>Stay Secure:</b> Lock your app to your device using Biometrics.
+            </li>
+          </ul>
           
-          <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; margin-top: 25px; border: 1px solid #e2e8f0;">
-            <p style="margin: 0; color: #334155; font-style: italic;">"Control your money, or it will control you."</p>
-            <p style="margin: 5px 0 0 0; font-size: 13px; color: #64748b; font-weight: bold;">— Founder, Venkata Pavan Kumar</p>
+          <!-- 🟢 Professional Founder Signature -->
+          <div style="background-color: #f8fafc; padding: 25px; border-radius: 12px; border: 1px dashed #cbd5e1; text-align: center;">
+            <p style="margin: 0; color: #334155; font-style: italic; font-size: 16px;">"Control your money, or it will control you."</p>
+            <div style="margin-top: 20px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+              <p style="margin: 0; font-size: 15px; color: #0f172a; font-weight: 900;">A. Venkata Pavan Kumar</p>
+              <p style="margin: 4px 0 0 0; font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">Founder & Lead Engineer</p>
+            </div>
           </div>
         </div>
+
+        <!-- 🟢 Secure Footer with Unique ID -->
+        <div style="background-color: #f1f5f9; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+          <p style="margin: 0; font-size: 13px; color: #64748b; font-weight: bold;">Subhams PMMS</p>
+          <p style="margin: 5px 0 0 0; font-size: 12px; color: #94a3b8;">© ${new Date().getFullYear()} All Rights Reserved.</p>
+          <span style="display: none; color: transparent; font-size: 0px;">&nbsp;[ID: ${uniqueId}]</span>
+        </div>
+
       </div>
     </div>
   `;
