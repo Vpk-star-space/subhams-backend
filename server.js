@@ -13,7 +13,7 @@ app.set("trust proxy", 1);
 
 // 🛠️ FIXED CORS: Only one instance, no trailing slash, and allows credentials
 app.use(cors({
-    origin: ["https://pmms.subhamsnetworks.in/", "http://localhost:3000"],
+    origin: ["https://pmms.subhamsnetworks.in", "http://localhost:3000"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"]
