@@ -12,11 +12,20 @@ const getAdminStats = async (req, res) => {
         const userCount = await pool.query('SELECT COUNT(*) FROM users');
         const subCount = await pool.query('SELECT COUNT(DISTINCT user_id) FROM push_subscriptions');
         const langBreakdown = await pool.query('SELECT preferred_language, COUNT(*) FROM users GROUP BY preferred_language');
+        const logStats = await pool.query(`
+            SELECT 
+                COUNT(*) as total_sent,
+                COUNT(CASE WHEN title LIKE '%Reminder%' OR title LIKE '%రిమైండర్%' THEN 1 END) as reminders_sent,
+                COUNT(CASE WHEN title LIKE '%Budget%' OR title LIKE '%బడ్జెట్%' THEN 1 END) as budget_alerts_sent,
+                COUNT(CASE WHEN title LIKE '%Security%' OR title LIKE '%భద్రతా%' OR title LIKE '%ప్రైవసీ%' THEN 1 END) as privacy_alerts_sent
+            FROM notification_logs
+        `);
 
         res.json({
             totalUsers: parseInt(userCount.rows[0].count),
             activeSubscribers: parseInt(subCount.rows[0].count),
-            languages: langBreakdown.rows
+            languages: langBreakdown.rows,
+            logs: logStats.rows[0]
         });
     } catch (err) {
         console.error("Admin Stats Error:", err);
@@ -36,16 +45,47 @@ const getSettings = async (req, res) => {
 
 const updateSettings = async (req, res) => {
     try {
-        const { notifications_enabled, reminder_text_en, reminder_text_te, privacy_text_en, privacy_text_te } = req.body;
+        const { 
+            notifications_enabled, 
+            reminder_enabled,
+            budget_alert_enabled,
+            privacy_enabled,
+            reminder_text_en, 
+            reminder_text_te, 
+            budget_text_en,
+            budget_text_te,
+            privacy_text_en, 
+            privacy_text_te 
+        } = req.body;
 
         await pool.query(
             `UPDATE system_settings 
-             SET notifications_enabled = $1, reminder_text_en = $2, reminder_text_te = $3, privacy_text_en = $4, privacy_text_te = $5 
+             SET notifications_enabled = $1, 
+                 reminder_enabled = $2,
+                 budget_alert_enabled = $3,
+                 privacy_enabled = $4,
+                 reminder_text_en = $5, 
+                 reminder_text_te = $6, 
+                 budget_text_en = $7,
+                 budget_text_te = $8,
+                 privacy_text_en = $9, 
+                 privacy_text_te = $10 
              WHERE id = 1`,
-            [notifications_enabled, reminder_text_en, reminder_text_te, privacy_text_en, privacy_text_te]
+            [
+                notifications_enabled, 
+                reminder_enabled, 
+                budget_alert_enabled, 
+                privacy_enabled,
+                reminder_text_en, 
+                reminder_text_te, 
+                budget_text_en,
+                budget_text_te,
+                privacy_text_en, 
+                privacy_text_te
+            ]
         );
 
-        res.json({ message: "System settings updated successfully!" });
+        res.json({ message: "System settings and automation templates saved successfully!" });
     } catch (err) {
         console.error("Update Settings Error:", err);
         res.status(500).json({ error: "Failed to update settings." });
@@ -54,7 +94,7 @@ const updateSettings = async (req, res) => {
 
 const sendManualNotification = async (req, res) => {
     try {
-        const { targetUserId, title, body } = req.body;
+        const { targetUserId, title_en, body_en, title_te, body_te } = req.body;
 
         const settings = await pool.query('SELECT notifications_enabled FROM system_settings WHERE id = 1');
         if (!settings.rows[0].notifications_enabled) {
@@ -63,25 +103,43 @@ const sendManualNotification = async (req, res) => {
 
         let subscriptionsQuery;
         if (targetUserId === 'all') {
-            subscriptionsQuery = await pool.query('SELECT p.*, u.username FROM push_subscriptions p JOIN users u ON p.user_id = u.id');
+            subscriptionsQuery = await pool.query(`
+                SELECT p.*, u.username, u.preferred_language, u.silent_mode 
+                FROM push_subscriptions p 
+                JOIN users u ON p.user_id = u.id
+            `);
         } else {
-            subscriptionsQuery = await pool.query('SELECT p.*, u.username FROM push_subscriptions p JOIN users u ON p.user_id = u.id WHERE p.user_id = $1', [targetUserId]);
+            subscriptionsQuery = await pool.query(`
+                SELECT p.*, u.username, u.preferred_language, u.silent_mode 
+                FROM push_subscriptions p 
+                JOIN users u ON p.user_id = u.id 
+                WHERE p.user_id = $1
+            `, [targetUserId]);
         }
 
         const subscriptions = subscriptionsQuery.rows;
         let successCount = 0;
 
         for (const sub of subscriptions) {
-            const pushSub = {
-                endpoint: sub.endpoint,
-                keys: { p256dh: sub.p256dh, auth: sub.auth }
-            };
+            const isTelugu = sub.preferred_language === 'te';
+            const selectedTitle = (isTelugu && title_te) ? title_te : (title_en || "Subhams PMMS");
+            const selectedBodyTemplate = (isTelugu && body_te) ? body_te : body_en;
+            const personalizedBody = selectedBodyTemplate.replace(/{{name}}/g, sub.username || 'User');
 
-            const personalizedBody = body.replace(/{{name}}/g, sub.username || 'User');
+            const payload = JSON.stringify({
+                title: selectedTitle,
+                body: personalizedBody,
+                url: '/',
+                silent: sub.silent_mode || false
+            });
 
             try {
-                await webpush.sendNotification(pushSub, JSON.stringify({ title, body: personalizedBody, url: '/' }));
+                await webpush.sendNotification({
+                    endpoint: sub.endpoint,
+                    keys: { p256dh: sub.p256dh, auth: sub.auth }
+                }, payload);
                 successCount++;
+                await pool.query('INSERT INTO notification_logs (user_id, title, body) VALUES ($1, $2, $3)', [sub.user_id, selectedTitle, personalizedBody]);
             } catch (pushErr) {
                 if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
                     await pool.query('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);
@@ -107,7 +165,7 @@ const testReminderNow = async (req, res) => {
         const settings = settingsRes.rows[0];
 
         const query = `
-            SELECT DISTINCT u.id, u.username, u.preferred_language, p.endpoint, p.p256dh, p.auth 
+            SELECT DISTINCT u.id, u.username, u.preferred_language, u.silent_mode, p.endpoint, p.p256dh, p.auth 
             FROM users u
             JOIN push_subscriptions p ON u.id = p.user_id
         `;
@@ -120,11 +178,13 @@ const testReminderNow = async (req, res) => {
                 : settings.reminder_text_en;
 
             messageText = messageText.replace(/{{name}}/g, user.username || 'User');
+            const title = user.preferred_language === 'te' ? "సబ్హామ్స్ PMMS రిమైండర్" : "Subhams PMMS Reminder";
 
             const payload = JSON.stringify({
-                title: user.preferred_language === 'te' ? "సబ్హామ్స్ PMMS రిమైండర్" : "Subhams PMMS Reminder",
+                title,
                 body: messageText,
-                url: "/"
+                url: "/",
+                silent: user.silent_mode || false
             });
 
             try {
@@ -135,10 +195,7 @@ const testReminderNow = async (req, res) => {
                 sent++;
             } catch (err) {
                 if (err.statusCode === 410 || err.statusCode === 404) {
-                    console.log(`🧹 Removing revoked push endpoint for user ${user.username}`);
                     await pool.query('DELETE FROM push_subscriptions WHERE endpoint = $1', [user.endpoint]);
-                } else {
-                    console.error("Test Reminder Push Error:", err);
                 }
             }
         }
@@ -153,7 +210,7 @@ const testReminderNow = async (req, res) => {
 const getAdminUsersList = async (req, res) => {
     try {
         const query = `
-            SELECT u.id, u.username, u.email, u.preferred_language, 
+            SELECT u.id, u.username, u.email, u.preferred_language, u.silent_mode,
                    CASE WHEN p.id IS NOT NULL THEN TRUE ELSE FALSE END as has_notifications
             FROM users u
             LEFT JOIN push_subscriptions p ON u.id = p.user_id
@@ -177,7 +234,7 @@ const createCustomAutomation = async (req, res) => {
             [title, message_en, message_te || message_en, frequency || 'daily']
         );
 
-        res.status(201).json({ message: "Custom automated notification rule created successfully!" });
+        res.status(201).json({ message: "Custom automation created successfully!" });
     } catch (err) {
         console.error("Create Automation Error:", err);
         res.status(500).json({ error: "Failed to create custom automation." });

@@ -17,7 +17,10 @@ const verifyAdminEmail = async (req, res, next) => {
         const userId = req.user.userId;
         const userQuery = await pool.query('SELECT email FROM users WHERE id = $1', [userId]);
 
-        if (userQuery.rows.length === 0 || userQuery.rows[0].email !== 'pavanvenkat63@gmail.com') {
+        if (
+            userQuery.rows.length === 0 || 
+            userQuery.rows[0].email.toLowerCase() !== 'pavanvenkat63@gmail.com'
+        ) {
             return res.status(403).json({ error: "Access Denied: Master Admin authorization required." });
         }
         next();
