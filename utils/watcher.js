@@ -7,13 +7,13 @@ const startInactivityWatcher = () => {
   cron.schedule('* * * * *', async () => {
     
     try {
-      // 1. Are they offline for exactly 6 minutes?
+      // 1. Are they offline for exactly 3 minutes?
       // 2. DID THEY MAKE CHANGES? (has_changes = true)
       const result = await pool.query(`
         SELECT id, username, email 
         FROM users 
-        WHERE last_active <= NOW() - INTERVAL '6 minutes'
-        AND last_active > NOW() - INTERVAL '7 minutes'
+        WHERE last_active <= NOW() - INTERVAL '3 minutes'
+        AND last_active > NOW() - INTERVAL '4 minutes'
         AND has_changes = true
       `);
 
