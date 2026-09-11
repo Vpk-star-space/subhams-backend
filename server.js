@@ -6,7 +6,8 @@ const pool = require("./config/db");
 
 const authRoutes = require("./routes/authRoutes");
 const transactionRoutes = require("./routes/transactionRoutes"); 
-
+const startReminderCron = require('./jobs/reminderCron');
+startReminderCron();
 const app = express();
 
 app.set("trust proxy", 1);
@@ -24,7 +25,9 @@ app.use(express.json());
 
 // Routes
 app.use("/api/auth", authRoutes);
-app.use("/api/transactions", transactionRoutes); 
+app.use("/api/transactions", transactionRoutes);
+app.use('/api/notifications', require('./routes/notificationRoutes')); 
+app.use('/api/admin', require('./routes/adminRoutes'));
 
 const PORT = process.env.PORT || 5000;
 
