@@ -240,7 +240,8 @@ const loginUser = async (req, res) => {
     await pool.query("UPDATE users SET refresh_token = $1 WHERE id = $2", [refreshToken, user.id]);
 
     console.log("=== 🕵️‍♂️ LOGIN DEBUG TRACKER END ===\n");
-    res.json({ accessToken, refreshToken });
+    // 🟢 UPDATED TO RETURN USER DATA SO "HELLO, NAME" WORKS INSTANTLY
+    res.json({ accessToken, refreshToken, user: { username: user.username, email: user.email } });
   } catch (err) {
     console.error("LOGIN ERROR:", err);
     res.status(500).json({ error: "Server error during login." });
@@ -274,7 +275,6 @@ const requestPasswordReset = async (req, res) => {
 
     email = email.toLowerCase().trim();
     
-    // 🟢 BUG FIX: LOWER(TRIM()) to catch accounts that were saved with spaces
     const userRes = await pool.query("SELECT * FROM users WHERE LOWER(TRIM(email)) = $1", [email]);
     
     if (userRes.rows.length === 0) return res.status(404).json({ error: "No account found with this email." });
@@ -328,7 +328,6 @@ const resetPassword = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-    // 🟢 BUG FIX: LOWER(TRIM()) ensures the database ACTUALLY wipes the lock!
     await pool.query(
         "UPDATE users SET password = $1, login_attempts = 0, block_until = NULL WHERE LOWER(TRIM(email)) = $2", 
         [hashedPassword, email]
@@ -342,6 +341,71 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// =====================================================================
+// 👤 8. GET CURRENT USER PROFILE (Sync on app load)
+// =====================================================================
+const getCurrentUserProfile = async (req, res) => {
+    try {
+        // 🟢 FIX: Uses req.user.userId to match your JWT implementation
+        const userQuery = await pool.query(
+            'SELECT id, username, email FROM users WHERE id = $1',
+            [req.user.userId] 
+        );
+
+        if (userQuery.rows.length === 0) {
+            return res.status(404).json({ error: "User not found." });
+        }
+
+        res.json({ user: userQuery.rows[0] });
+    } catch (err) {
+        console.error("Fetch profile error:", err);
+        res.status(500).json({ error: "Failed to fetch profile." });
+    }
+};
+
+// =====================================================================
+// ✏️ 9. UPDATE DISPLAY NAME ONLY (Email stays locked)
+// =====================================================================
+const updateProfile = async (req, res) => {
+    try {
+        const { username } = req.body;
+
+        if (!username || username.trim() === "") {
+            return res.status(400).json({ error: "Display name cannot be empty." });
+        }
+
+        const trimmedName = username.trim();
+
+        // 🟢 FIX: Uses req.user.userId and returns updated info
+        const updateQuery = await pool.query(
+            'UPDATE users SET username = $1 WHERE id = $2 RETURNING id, username, email',
+            [trimmedName, req.user.userId] 
+        );
+
+        if (updateQuery.rows.length === 0) {
+            return res.status(404).json({ error: "User not found." });
+        }
+
+        res.json({
+            message: "Profile updated successfully.",
+            user: updateQuery.rows[0]
+        });
+    } catch (err) {
+        console.error("Update profile error:", err);
+        res.status(500).json({ error: "Failed to update profile name." });
+    }
+};
+
 module.exports = { 
-  registerUser, loginUser, refreshAccessToken, verifyOTP, googleLogin, registerBiometric, loginBiometric, requestPasswordReset, resetPassword 
+  registerUser, 
+  loginUser, 
+  refreshAccessToken, 
+  verifyOTP, 
+  googleLogin, 
+  registerBiometric, 
+  loginBiometric, 
+  requestPasswordReset, 
+  resetPassword, 
+  getCurrentUserProfile, 
+  updateProfile 
 };

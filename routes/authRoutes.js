@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const authController = require("../controllers/authController");
 const rateLimit = require("express-rate-limit");
-const protect = require("../middleware/authMiddleware");
+const protect = require("../middleware/authMiddleware"); // 🟢 FIXED: Removed the {}
 
 // 🛡️ 1. OTP LIMITER: Extremely strict (prevents email spam/costs)
 const otpLimiter = rateLimit({
@@ -44,5 +44,9 @@ router.post("/refresh", authController.refreshAccessToken);
 // 🔒 BIOMETRIC ROUTES
 router.post('/register-biometric', protect, authController.registerBiometric); 
 router.post('/login-biometric', generalLimiter, authController.loginBiometric);
+
+// 👤 PROFILE ROUTES
+router.get('/me', protect, authController.getCurrentUserProfile);
+router.put('/update-profile', protect, authController.updateProfile);
 
 module.exports = router;
