@@ -134,10 +134,20 @@ const sendManualNotification = async (req, res) => {
             });
 
             try {
+                // 🟢 ADD URGENCY HEADERS FOR FCM
+                const pushOptions = {
+                    TTL: 60 * 60, // 1 hour time-to-live
+                    urgency: 'high', 
+                    headers: {
+                        Urgency: 'high'
+                    }
+                };
+
                 await webpush.sendNotification({
                     endpoint: sub.endpoint,
                     keys: { p256dh: sub.p256dh, auth: sub.auth }
-                }, payload);
+                }, payload, pushOptions);
+                
                 successCount++;
                 await pool.query('INSERT INTO notification_logs (user_id, title, body) VALUES ($1, $2, $3)', [sub.user_id, selectedTitle, personalizedBody]);
             } catch (pushErr) {
@@ -188,10 +198,16 @@ const testReminderNow = async (req, res) => {
             });
 
             try {
+                 const pushOptions = { 
+                    TTL: 60 * 60, 
+                    urgency: 'high', 
+                    headers: { Urgency: 'high' }
+                };
+
                 await webpush.sendNotification({
                     endpoint: user.endpoint,
                     keys: { p256dh: user.p256dh, auth: user.auth }
-                }, payload);
+                }, payload, pushOptions);
                 sent++;
             } catch (err) {
                 if (err.statusCode === 410 || err.statusCode === 404) {

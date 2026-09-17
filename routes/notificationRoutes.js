@@ -87,10 +87,16 @@ const evaluateUserBehavior = async (userId) => {
             return false; 
         }
 
-        const pushOptions = { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } };
-        await webpush.sendNotification(pushOptions, JSON.stringify({
+        const pushOptions = { 
+            TTL: 60 * 60, // 1 hour time-to-live
+            urgency: 'high', 
+            headers: { Urgency: 'high' }
+        };
+        const pushSub = { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } };
+        
+        await webpush.sendNotification(pushSub, JSON.stringify({
             title, body, url: "/", silent: user.silent_mode || false
-        }));
+        }), pushOptions);
 
         await pool.query('UPDATE users SET last_behavior_alert_at = NOW() WHERE id = $1', [userId]);
         await pool.query('INSERT INTO notification_logs (user_id, title, body) VALUES ($1, $2, $3)', [userId, title, body]);
@@ -132,12 +138,17 @@ const checkAndSendInactivityReminders = async () => {
 
             const title = user.preferred_language === 'te' ? "సబ్హామ్స్ PMMS రిమైండర్" : "Subhams PMMS Reminder";
             const payload = JSON.stringify({ title, body: messageText, url: "/", silent: user.silent_mode || false });
+            const pushOptions = { 
+                TTL: 60 * 60, 
+                urgency: 'high', 
+                headers: { Urgency: 'high' }
+            };
 
             try {
                 await webpush.sendNotification({
                     endpoint: user.endpoint,
                     keys: { p256dh: user.p256dh, auth: user.auth }
-                }, payload);
+                }, payload, pushOptions);
 
                 // 🔥 UPDATE DB TO ENFORCE THE 1-HOUR GAP
                 await pool.query('UPDATE users SET last_reminder_at = NOW() WHERE id = $1', [user.id]);
@@ -177,7 +188,6 @@ router.post('/subscribe', protect, async (req, res) => {
             ? `🎉 నోటిఫికేషన్‌లను ప్రారంభించినందుకు ధన్యవాదాలు ${name}! ముఖ్యమైన ఆర్థిక హెచ్చరికలు ఇకపై మీకు అందుతాయి!`
             : `🎉 Thank you ${name} for enabling notifications! Important financial alerts will notify you here.`;
 
-        // Native truecaller settings applied on frontend, but we pass data payload here
         await webpush.sendNotification({
             endpoint: subscription.endpoint,
             keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth }

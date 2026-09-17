@@ -2,7 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const pool = require("./config/db"); 
-const startInactivityWatcher = require("./utils/watcher"); // 🟢 WATCHER PRESERVED FOR EMAILS
+const startInactivityWatcher = require("./utils/watcher");
 
 const authRoutes = require("./routes/authRoutes");
 const transactionRoutes = require("./routes/transactionRoutes"); 
@@ -51,7 +51,6 @@ const runNotificationChecks = async () => {
 app.use((req, res, next) => {
     const now = Date.now();
     // Fire the piggyback check every 5 minutes during active traffic
-    // (The database timestamp guarantees users won't get spammed more than once an hour)
     if (now - lastCheckTime > 300000) { 
         lastCheckTime = now;
         runNotificationChecks().catch(console.error);
@@ -70,7 +69,6 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     
-    // 🟢 Keep the email watcher running
     startInactivityWatcher();
 
     // Run an initial notification check 5 seconds after server startup
