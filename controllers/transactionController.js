@@ -157,7 +157,8 @@ exports.getMonthlyData = async (req, res) => {
     `, [req.user.userId]);
 
     const formattedData = result.rows.reduce((acc, item) => {
-      const monthName = new Date(item.year, item.month - 1).toLocaleString('default', { month: 'short' });
+      // 🟢 FIX: Strictly format to English (en-US) so the frontend can reliably translate it
+      const monthName = new Date(item.year, item.month - 1).toLocaleString('en-US', { month: 'short' });
       const yearMonth = `${monthName} ${item.year}`;
       
       let existingMonth = acc.find(m => m.name === yearMonth);
@@ -168,7 +169,7 @@ exports.getMonthlyData = async (req, res) => {
       
       if (item.type === "income") existingMonth.income = Number(item.total);
       if (item.type === "expense") existingMonth.expense = Number(item.total);
-      if (item.type === "pending") existingMonth.pending = Number(item.total); // 🟢 Prevents graphing errors!
+      if (item.type === "pending") existingMonth.pending = Number(item.total); 
       
       return acc;
     }, []);

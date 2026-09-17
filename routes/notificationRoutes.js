@@ -10,7 +10,7 @@ webpush.setVapidDetails(
     process.env.VAPID_PRIVATE_KEY
 );
 
-// 🟢 1-BY-1 BEHAVIOR CHECK (NO AMOUNTS, RESPECTS TELUGU / ENGLISH)
+// 🟢 1. BEHAVIOR CHECK (Budget/Savings Alerts)
 const evaluateUserBehavior = async (userId) => {
     try {
         const settingsRes = await pool.query('SELECT * FROM system_settings WHERE id = 1');
@@ -18,12 +18,10 @@ const evaluateUserBehavior = async (userId) => {
         const settings = settingsRes.rows[0];
         if (!settings.budget_alert_enabled) return false;
 
-        // 1. Fetch user's subscription
         const subRes = await pool.query('SELECT * FROM push_subscriptions WHERE user_id = $1', [userId]);
         if (subRes.rows.length === 0) return false;
         const sub = subRes.rows[0];
 
-        // 2. Fetch user profile
         const userRes = await pool.query(`
             SELECT username, preferred_language, silent_mode, last_behavior_alert_at 
             FROM users WHERE id = $1
@@ -35,7 +33,6 @@ const evaluateUserBehavior = async (userId) => {
         const name = user.username || 'User';
         const now = new Date();
 
-        // 3. Find when user last updated transactions
         const txTimeRes = await pool.query(`
             SELECT MAX(created_at) as last_created, MAX(date) as last_date 
             FROM transactions WHERE user_id = $1
@@ -45,19 +42,16 @@ const evaluateUserBehavior = async (userId) => {
             ? new Date(txTimeRes.rows[0].last_created) 
             : (txTimeRes.rows[0].last_date ? new Date(txTimeRes.rows[0].last_date) : null);
 
-        if (!lastTxTime) return false; // No transactions yet
+        if (!lastTxTime) return false; 
 
-        // Must be at least 3 minutes after transaction change (user has finished and left)
         const minutesSinceTx = (now - lastTxTime) / (1000 * 60);
         if (minutesSinceTx < 3) return false; 
 
-        // Check if alert was already sent for this transaction or newer
         const lastAlertTime = user.last_behavior_alert_at ? new Date(user.last_behavior_alert_at) : null;
         if (lastAlertTime && lastAlertTime >= lastTxTime) {
-            return false; // Already notified
+            return false; 
         }
 
-        // 4. Calculate monthly financial behavior
         const finRes = await pool.query(`
             SELECT 
                 COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
@@ -72,7 +66,6 @@ const evaluateUserBehavior = async (userId) => {
         let title = "";
         let body = "";
 
-        // CASE A: HIGH EXPENDITURE OR DEFICIT (Expenses >= 80% or Exceeding Income)
         if ((income > 0 && (expense / income) >= 0.8) || (income === 0 && expense > 0)) {
             if (lang === 'te') {
                 title = "⚠️ బడ్జెట్ హెచ్చరిక";
@@ -82,7 +75,6 @@ const evaluateUserBehavior = async (userId) => {
                 body = `Hey ${name}! Your monthly expenses are running high. Keep an eye on your budget and maintain your savings habit!`;
             }
         } 
-        // CASE B: GREAT SAVINGS (Expenses <= 40% with Positive Income)
         else if (income > 0 && (expense / income) <= 0.4) {
             if (lang === 'te') {
                 title = "🌟 అద్భుతమైన పొదుపు!";
@@ -92,19 +84,14 @@ const evaluateUserBehavior = async (userId) => {
                 body = `Awesome job ${name}! You are saving wonderfully this month. Keep up the disciplined financial habit!`;
             }
         } else {
-            return false; // Normal range, no alert needed
+            return false; 
         }
 
-        // 5. Send notification
         const pushOptions = { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } };
         await webpush.sendNotification(pushOptions, JSON.stringify({
-            title,
-            body,
-            url: "/",
-            silent: user.silent_mode || false
+            title, body, url: "/", silent: user.silent_mode || false
         }));
 
-        // 6. Update user's alert timestamp so it never duplicates
         await pool.query('UPDATE users SET last_behavior_alert_at = NOW() WHERE id = $1', [userId]);
         await pool.query('INSERT INTO notification_logs (user_id, title, body) VALUES ($1, $2, $3)', [userId, title, body]);
 
@@ -112,10 +99,57 @@ const evaluateUserBehavior = async (userId) => {
     } catch (err) {
         if (err.statusCode === 410 || err.statusCode === 404) {
             await pool.query('DELETE FROM push_subscriptions WHERE user_id = $1', [userId]);
-        } else {
-            console.error("Behavior Notification Evaluation Error:", err);
         }
         return false;
+    }
+};
+
+// 🟢 2. INACTIVITY REMINDER (DB-DRIVEN 1-HOUR GAP CHECK)
+const checkAndSendInactivityReminders = async () => {
+    try {
+        const settingsRes = await pool.query('SELECT * FROM system_settings WHERE id = 1');
+        if (settingsRes.rows.length === 0 || !settingsRes.rows[0].notifications_enabled) return;
+        const settings = settingsRes.rows[0];
+
+        // 🔥 LOGIC: 24hr inactive AND (Never reminded OR reminded more than 1 hour ago)
+        const query = `
+            SELECT DISTINCT u.id, u.username, u.preferred_language, u.silent_mode, u.last_reminder_at, p.endpoint, p.p256dh, p.auth 
+            FROM users u
+            JOIN push_subscriptions p ON u.id = p.user_id
+            WHERE NOT EXISTS (
+                SELECT 1 FROM transactions t 
+                WHERE t.user_id = u.id AND t.date >= NOW() - INTERVAL '24 hours'
+            )
+            AND (u.last_reminder_at IS NULL OR u.last_reminder_at <= NOW() - INTERVAL '1 hour')
+        `;
+        const usersToRemind = await pool.query(query);
+
+        for (const user of usersToRemind.rows) {
+            let messageText = user.preferred_language === 'te' 
+                ? settings.reminder_text_te 
+                : settings.reminder_text_en;
+            messageText = messageText.replace(/{{name}}/g, user.username || 'User');
+
+            const title = user.preferred_language === 'te' ? "సబ్హామ్స్ PMMS రిమైండర్" : "Subhams PMMS Reminder";
+            const payload = JSON.stringify({ title, body: messageText, url: "/", silent: user.silent_mode || false });
+
+            try {
+                await webpush.sendNotification({
+                    endpoint: user.endpoint,
+                    keys: { p256dh: user.p256dh, auth: user.auth }
+                }, payload);
+
+                // 🔥 UPDATE DB TO ENFORCE THE 1-HOUR GAP
+                await pool.query('UPDATE users SET last_reminder_at = NOW() WHERE id = $1', [user.id]);
+                await pool.query('INSERT INTO notification_logs (user_id, title, body) VALUES ($1, $2, $3)', [user.id, title, messageText]);
+            } catch (err) {
+                if (err.statusCode === 410 || err.statusCode === 404) {
+                    await pool.query('DELETE FROM push_subscriptions WHERE endpoint = $1', [user.endpoint]);
+                }
+            }
+        }
+    } catch (err) {
+        console.error("DB Reminder Trigger Error:", err);
     }
 };
 
@@ -143,6 +177,7 @@ router.post('/subscribe', protect, async (req, res) => {
             ? `🎉 నోటిఫికేషన్‌లను ప్రారంభించినందుకు ధన్యవాదాలు ${name}! ముఖ్యమైన ఆర్థిక హెచ్చరికలు ఇకపై మీకు అందుతాయి!`
             : `🎉 Thank you ${name} for enabling notifications! Important financial alerts will notify you here.`;
 
+        // Native truecaller settings applied on frontend, but we pass data payload here
         await webpush.sendNotification({
             endpoint: subscription.endpoint,
             keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth }
@@ -186,5 +221,6 @@ router.post('/check-behavior', protect, async (req, res) => {
 
 module.exports = {
     router,
-    evaluateUserBehavior
+    evaluateUserBehavior,
+    checkAndSendInactivityReminders
 };
