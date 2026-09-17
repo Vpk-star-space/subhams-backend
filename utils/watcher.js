@@ -3,27 +3,22 @@ const pool = require('../config/db');
 const { sendInactivityInsight } = require('./emailService'); 
 
 const startInactivityWatcher = () => {
-  // This runs every minute to check the clocks
   cron.schedule('* * * * *', async () => {
-    
     try {
-      // 1. Are they offline for exactly 1 minute?
-      // 2. DID THEY MAKE CHANGES? (has_changes = true)
-      // 3. 🟢 Did they leave Email Digests turned ON? (Default is true)
+      // 🔒 STRICT CHECK: User made changes AND email_digest_enabled is NOT false
       const result = await pool.query(`
         SELECT id, username, email 
         FROM users 
         WHERE last_active <= NOW() - INTERVAL '1 minutes'
-        AND last_active > NOW() - INTERVAL '2 minutes'
+        AND last_active > NOW() - INTERVAL '3 minutes'
         AND has_changes = true
-        AND (email_digest_enabled IS NULL OR email_digest_enabled = true)
+        AND COALESCE(email_digest_enabled, true) = true
       `);
 
       if (result.rows.length > 0) {
         console.log(`⚠️ Found ${result.rows.length} users with changes who went offline. Sending email...`);
         
         for (const user of result.rows) {
-          // Calculate the financial summary for the email (NOW INCLUDING PENDING)
           const sumResult = await pool.query(`
             SELECT 
               COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS income,
@@ -44,11 +39,9 @@ const startInactivityWatcher = () => {
             balance: income - expense
           };
 
-          // Send the beautiful bilingual email
           await sendInactivityInsight(user.email, user.username, summary);
           console.log(`✅ Offline Email sent to ${user.email}`);
 
-          // TURN THE SWITCH OFF: Email sent, waiting for the next change.
           await pool.query("UPDATE users SET has_changes = false WHERE id = $1", [user.id]);
         }
       }

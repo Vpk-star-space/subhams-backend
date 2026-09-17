@@ -10,7 +10,7 @@ webpush.setVapidDetails(
     process.env.VAPID_PRIVATE_KEY
 );
 
-// 🟢 1. BEHAVIOR CHECK (Budget/Savings Alerts)
+// 🟢 1. BEHAVIOR CHECK (Budget & Deficit Alerts)
 const evaluateUserBehavior = async (userId) => {
     try {
         const settingsRes = await pool.query('SELECT * FROM system_settings WHERE id = 1');
@@ -42,14 +42,14 @@ const evaluateUserBehavior = async (userId) => {
             ? new Date(txTimeRes.rows[0].last_created) 
             : (txTimeRes.rows[0].last_date ? new Date(txTimeRes.rows[0].last_date) : null);
 
-        if (!lastTxTime) return false; 
+        if (!lastTxTime) return false;
 
         const minutesSinceTx = (now - lastTxTime) / (1000 * 60);
-        if (minutesSinceTx < 3) return false; 
+        if (minutesSinceTx < 3) return false;
 
         const lastAlertTime = user.last_behavior_alert_at ? new Date(user.last_behavior_alert_at) : null;
         if (lastAlertTime && lastAlertTime >= lastTxTime) {
-            return false; 
+            return false;
         }
 
         const finRes = await pool.query(`
@@ -74,8 +74,7 @@ const evaluateUserBehavior = async (userId) => {
                 title = "⚠️ High Spending Alert";
                 body = `Hey ${name}! Your monthly expenses are running high. Keep an eye on your budget and maintain your savings habit!`;
             }
-        } 
-        else if (income > 0 && (expense / income) <= 0.4) {
+        } else if (income > 0 && (expense / income) <= 0.4) {
             if (lang === 'te') {
                 title = "🌟 అద్భుతమైన పొదుపు!";
                 body = `శభాష్ ${name}! ఈ నెల మీరు చాలా చక్కగా ఆదా చేస్తున్నారు. మీ ఆర్థిక క్రమశిక్షణ చాలా బాగుంది, ఇలాగే కొనసాగించండి!`;
@@ -84,17 +83,19 @@ const evaluateUserBehavior = async (userId) => {
                 body = `Awesome job ${name}! You are saving wonderfully this month. Keep up the disciplined financial habit!`;
             }
         } else {
-            return false; 
+            return false;
         }
 
         const pushOptions = { 
-            TTL: 60 * 60, // 1 hour time-to-live
+            TTL: 60 * 60,
             urgency: 'high', 
             headers: { Urgency: 'high' }
         };
-        const pushSub = { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } };
-        
-        await webpush.sendNotification(pushSub, JSON.stringify({
+
+        await webpush.sendNotification({
+            endpoint: sub.endpoint,
+            keys: { p256dh: sub.p256dh, auth: sub.auth }
+        }, JSON.stringify({
             title, body, url: "/", silent: user.silent_mode || false
         }), pushOptions);
 
@@ -110,14 +111,16 @@ const evaluateUserBehavior = async (userId) => {
     }
 };
 
-// 🟢 2. INACTIVITY REMINDER (DB-DRIVEN 1-HOUR GAP CHECK)
+// 🟢 2. INACTIVITY REMINDER (NIGHT ONLY, 8 PM+, ONCE EVERY 24 HOURS)
 const checkAndSendInactivityReminders = async () => {
     try {
+        const istHour = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" })).getHours();
+        if (istHour < 20) return;
+
         const settingsRes = await pool.query('SELECT * FROM system_settings WHERE id = 1');
         if (settingsRes.rows.length === 0 || !settingsRes.rows[0].notifications_enabled) return;
         const settings = settingsRes.rows[0];
 
-        // 🔥 LOGIC: 24hr inactive AND (Never reminded OR reminded more than 1 hour ago)
         const query = `
             SELECT DISTINCT u.id, u.username, u.preferred_language, u.silent_mode, u.last_reminder_at, p.endpoint, p.p256dh, p.auth 
             FROM users u
@@ -126,7 +129,7 @@ const checkAndSendInactivityReminders = async () => {
                 SELECT 1 FROM transactions t 
                 WHERE t.user_id = u.id AND t.date >= NOW() - INTERVAL '24 hours'
             )
-            AND (u.last_reminder_at IS NULL OR u.last_reminder_at <= NOW() - INTERVAL '1 hour')
+            AND (u.last_reminder_at IS NULL OR u.last_reminder_at <= NOW() - INTERVAL '24 hours')
         `;
         const usersToRemind = await pool.query(query);
 
@@ -138,6 +141,7 @@ const checkAndSendInactivityReminders = async () => {
 
             const title = user.preferred_language === 'te' ? "సబ్హామ్స్ PMMS రిమైండర్" : "Subhams PMMS Reminder";
             const payload = JSON.stringify({ title, body: messageText, url: "/", silent: user.silent_mode || false });
+            
             const pushOptions = { 
                 TTL: 60 * 60, 
                 urgency: 'high', 
@@ -150,7 +154,6 @@ const checkAndSendInactivityReminders = async () => {
                     keys: { p256dh: user.p256dh, auth: user.auth }
                 }, payload, pushOptions);
 
-                // 🔥 UPDATE DB TO ENFORCE THE 1-HOUR GAP
                 await pool.query('UPDATE users SET last_reminder_at = NOW() WHERE id = $1', [user.id]);
                 await pool.query('INSERT INTO notification_logs (user_id, title, body) VALUES ($1, $2, $3)', [user.id, title, messageText]);
             } catch (err) {
@@ -160,7 +163,7 @@ const checkAndSendInactivityReminders = async () => {
             }
         }
     } catch (err) {
-        console.error("DB Reminder Trigger Error:", err);
+        console.error("Night Inactivity Reminder Error:", err);
     }
 };
 
@@ -223,7 +226,36 @@ router.put('/toggle-silent', protect, async (req, res) => {
     }
 });
 
-// API TRIGGER: User checks on sync
+// 🟢 FIX 1: TOGGLE OFFLINE EMAIL DIGEST (STORES EXACT TRUE/FALSE IN DATABASE)
+router.put('/toggle-email-digest', protect, async (req, res) => {
+    try {
+        const { email_digest_enabled } = req.body;
+        await pool.query('UPDATE users SET email_digest_enabled = $1 WHERE id = $2', [Boolean(email_digest_enabled), req.user.userId]);
+        res.json({ message: `Email digest preference saved: ${email_digest_enabled}` });
+    } catch (err) {
+        console.error("Toggle email digest error:", err);
+        res.status(500).json({ error: "Failed to update email setting." });
+    }
+});
+
+// 🟢 FIX 2: TELEMETRY TRACKER (SAVES CALCULATIONS & DOWNLOADS)
+router.post('/track-feature', protect, async (req, res) => {
+    try {
+        const { feature_name } = req.body;
+        if (!feature_name) return res.status(400).json({ error: "Feature name required" });
+
+        await pool.query(
+            'INSERT INTO feature_analytics (user_id, feature_name) VALUES ($1, $2)',
+            [req.user.userId, feature_name]
+        );
+        res.json({ status: "tracked" });
+    } catch (err) {
+        // Silent fail to avoid disrupting user experience
+        res.status(200).json({ status: "skipped" });
+    }
+});
+
+// BEHAVIOR SYNC TRIGGER
 router.post('/check-behavior', protect, async (req, res) => {
     const sent = await evaluateUserBehavior(req.user.userId);
     res.json({ status: sent ? "sent" : "skipped" });
