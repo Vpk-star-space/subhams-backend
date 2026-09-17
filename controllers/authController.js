@@ -6,6 +6,8 @@ const { sendOTPEmail, sendWelcomeEmail } = require("../utils/emailService");
 const { OAuth2Client } = require("google-auth-library");
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+const DEVICE_ERROR_MSG = "Device or Network is currently stuck. Please check connection.";
+
 // ================= REGISTER BIOMETRIC KEY =================
 const registerBiometric = async (req, res) => {
   try {
@@ -17,7 +19,7 @@ const registerBiometric = async (req, res) => {
     await pool.query("UPDATE users SET biometric_key = $1 WHERE id = $2", [credentialId, userId]);
     res.json({ message: "Biometric authentication linked successfully! 🔒" });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: DEVICE_ERROR_MSG });
   }
 };
 
@@ -43,7 +45,7 @@ const loginBiometric = async (req, res) => {
 
     res.json({ message: "Welcome back! Unlocked via Biometrics.", accessToken, refreshToken, user: { id: user.id, username: user.username } });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: DEVICE_ERROR_MSG });
   }
 };
 
@@ -117,7 +119,7 @@ const registerUser = async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Server error during registration" });
+    res.status(500).json({ error: DEVICE_ERROR_MSG });
   }
 };
 
@@ -156,7 +158,7 @@ const verifyOTP = async (req, res) => {
 
   } catch (err) {
     if (err.code === '23505') return res.status(400).json({ error: "Email or Username already taken." });
-    res.status(500).json({ error: "Server error during verification" });
+    res.status(500).json({ error: DEVICE_ERROR_MSG });
   }
 };
 
@@ -240,11 +242,10 @@ const loginUser = async (req, res) => {
     await pool.query("UPDATE users SET refresh_token = $1 WHERE id = $2", [refreshToken, user.id]);
 
     console.log("=== 🕵️‍♂️ LOGIN DEBUG TRACKER END ===\n");
-    // 🟢 UPDATED TO RETURN USER DATA SO "HELLO, NAME" WORKS INSTANTLY
     res.json({ accessToken, refreshToken, user: { username: user.username, email: user.email } });
   } catch (err) {
     console.error("LOGIN ERROR:", err);
-    res.status(500).json({ error: "Server error during login." });
+    res.status(500).json({ error: DEVICE_ERROR_MSG });
   }
 };
 
@@ -300,7 +301,7 @@ const requestPasswordReset = async (req, res) => {
 
   } catch (err) { 
     console.error("FORGOT PASSWORD ERROR:", err);
-    res.status(500).json({ error: "Server error." }); 
+    res.status(500).json({ error: DEVICE_ERROR_MSG }); 
   }
 };
 
@@ -337,7 +338,7 @@ const resetPassword = async (req, res) => {
     res.json({ message: "Password successfully reset! You can now log in." });
   } catch (err) { 
     console.error("PASSWORD RESET ERROR:", err); 
-    res.status(500).json({ error: "Server error. Please try again later." }); 
+    res.status(500).json({ error: DEVICE_ERROR_MSG }); 
   }
 };
 
@@ -346,9 +347,11 @@ const resetPassword = async (req, res) => {
 // =====================================================================
 const getCurrentUserProfile = async (req, res) => {
     try {
-        // 🟢 FIX: Uses req.user.userId to match your JWT implementation
+        // 🟢 FIX: Include email_digest_enabled so the frontend toggle syncs correctly
         const userQuery = await pool.query(
-            'SELECT id, username, email FROM users WHERE id = $1',
+            `SELECT id, username, email, preferred_language, silent_mode, 
+                    COALESCE(email_digest_enabled, true) as email_digest_enabled 
+             FROM users WHERE id = $1`,
             [req.user.userId] 
         );
 
@@ -376,7 +379,6 @@ const updateProfile = async (req, res) => {
 
         const trimmedName = username.trim();
 
-        // 🟢 FIX: Uses req.user.userId and returns updated info
         const updateQuery = await pool.query(
             'UPDATE users SET username = $1 WHERE id = $2 RETURNING id, username, email',
             [trimmedName, req.user.userId] 
@@ -392,7 +394,7 @@ const updateProfile = async (req, res) => {
         });
     } catch (err) {
         console.error("Update profile error:", err);
-        res.status(500).json({ error: "Failed to update profile name." });
+        res.status(500).json({ error: DEVICE_ERROR_MSG });
     }
 };
 

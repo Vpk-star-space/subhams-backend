@@ -179,10 +179,10 @@ const sendInactivityInsight = async (email, username, summary) => {
             </p>
           </div>
 
-          <!-- 🟢 UPDATED: Current Feature Highlight Box -->
+          <!-- 🟢 UPDATED: Feature Highlight Box (Interest Calculator) -->
           <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; border: 1px dashed #cbd5e1; margin-top: 25px; text-align: center;">
             <p style="color: #64748b; font-size: 13px; margin: 0; line-height: 1.6;">
-              🚀 <b>Feature Highlight:</b> You can easily download your complete history or individual transactions in PDF format directly from your dashboard! You can also share specific transactions to yourself or others, making it simple to manage your financial records.
+              🚀 <b>New Feature:</b> Try our new <b>Date & Interest Calculator</b>! Instantly calculate Local or Bank style interest, track daily/weekly growth, and securely share detailed reports directly to WhatsApp!
             </p>
           </div>
         </div>

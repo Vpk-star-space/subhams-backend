@@ -11,7 +11,8 @@ const setupPushDatabase = async () => {
             ADD COLUMN IF NOT EXISTS preferred_language VARCHAR(10) DEFAULT 'en',
             ADD COLUMN IF NOT EXISTS last_reminder_at TIMESTAMP,
             ADD COLUMN IF NOT EXISTS last_budget_alert_at TIMESTAMP,
-            ADD COLUMN IF NOT EXISTS last_savings_alert_at TIMESTAMP
+            ADD COLUMN IF NOT EXISTS last_savings_alert_at TIMESTAMP,
+            ADD COLUMN IF NOT EXISTS email_digest_enabled BOOLEAN DEFAULT TRUE
         `);
         console.log("✅ Added Language Preference & Tracking Columns to Users table.");
 
@@ -75,6 +76,17 @@ const setupPushDatabase = async () => {
             )
         `);
         console.log("✅ Custom Automations table created.");
+
+        // 6. CREATE FEATURE ANALYTICS TABLE (For Telemetry)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS feature_analytics (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                feature_name VARCHAR(100) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        console.log("✅ Feature Analytics table created.");
 
         console.log("🎉 Master Notification Database is Ready!");
         process.exit(0);

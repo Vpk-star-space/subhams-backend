@@ -32,7 +32,7 @@ const runNotificationChecks = async () => {
     try {
         console.log("🔍 Piggyback: Running smart notification checks...");
         
-        // 1. Check inactive users (Database enforces the 1-hour gap)
+        // 1. Check inactive users (Database enforces the 1-hour gap & night-only rule)
         await checkAndSendInactivityReminders();
 
         // 2. Check active users for budget alerts 1-by-1
@@ -69,6 +69,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     
+    // Start the 1-minute email digest watcher
     startInactivityWatcher();
 
     // Run an initial notification check 5 seconds after server startup

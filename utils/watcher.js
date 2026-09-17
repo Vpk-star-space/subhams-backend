@@ -9,12 +9,14 @@ const startInactivityWatcher = () => {
     try {
       // 1. Are they offline for exactly 1 minute?
       // 2. DID THEY MAKE CHANGES? (has_changes = true)
+      // 3. 🟢 Did they leave Email Digests turned ON? (Default is true)
       const result = await pool.query(`
         SELECT id, username, email 
         FROM users 
         WHERE last_active <= NOW() - INTERVAL '1 minutes'
         AND last_active > NOW() - INTERVAL '2 minutes'
         AND has_changes = true
+        AND (email_digest_enabled IS NULL OR email_digest_enabled = true)
       `);
 
       if (result.rows.length > 0) {

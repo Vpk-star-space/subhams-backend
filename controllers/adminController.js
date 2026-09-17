@@ -7,11 +7,13 @@ webpush.setVapidDetails(
     process.env.VAPID_PRIVATE_KEY
 );
 
+// ================= 1. GET ADMIN STATS & TELEMETRY =================
 const getAdminStats = async (req, res) => {
     try {
         const userCount = await pool.query('SELECT COUNT(*) FROM users');
         const subCount = await pool.query('SELECT COUNT(DISTINCT user_id) FROM push_subscriptions');
         const langBreakdown = await pool.query('SELECT preferred_language, COUNT(*) FROM users GROUP BY preferred_language');
+        
         const logStats = await pool.query(`
             SELECT 
                 COUNT(*) as total_sent,
@@ -21,11 +23,31 @@ const getAdminStats = async (req, res) => {
             FROM notification_logs
         `);
 
+        // 🟢 FEATURE TELEMETRY (Tracks calculator & PDF usage without crashing if table is new)
+        let featureStats = { calculations: 0, reports: 0 };
+        try {
+            const featRes = await pool.query(`
+                SELECT 
+                    COUNT(CASE WHEN feature_name = 'interest_calculator_used' THEN 1 END) as calculations,
+                    COUNT(CASE WHEN feature_name = 'pdf_report_downloaded' THEN 1 END) as reports
+                FROM feature_analytics
+            `);
+            if (featRes.rows.length > 0) {
+                featureStats = {
+                    calculations: parseInt(featRes.rows[0].calculations) || 0,
+                    reports: parseInt(featRes.rows[0].reports) || 0
+                };
+            }
+        } catch (analyticsErr) {
+            // Silently ignore if feature_analytics table is still migrating
+        }
+
         res.json({
             totalUsers: parseInt(userCount.rows[0].count),
             activeSubscribers: parseInt(subCount.rows[0].count),
             languages: langBreakdown.rows,
-            logs: logStats.rows[0]
+            logs: logStats.rows[0],
+            features: featureStats
         });
     } catch (err) {
         console.error("Admin Stats Error:", err);
@@ -33,6 +55,7 @@ const getAdminStats = async (req, res) => {
     }
 };
 
+// ================= 2. GET SYSTEM SETTINGS =================
 const getSettings = async (req, res) => {
     try {
         const settings = await pool.query('SELECT * FROM system_settings ORDER BY id ASC LIMIT 1');
@@ -43,6 +66,7 @@ const getSettings = async (req, res) => {
     }
 };
 
+// ================= 3. UPDATE SYSTEM SETTINGS =================
 const updateSettings = async (req, res) => {
     try {
         const { 
@@ -92,6 +116,7 @@ const updateSettings = async (req, res) => {
     }
 };
 
+// ================= 4. SEND MANUAL NOTIFICATION =================
 const sendManualNotification = async (req, res) => {
     try {
         const { targetUserId, title_en, body_en, title_te, body_te } = req.body;
@@ -169,6 +194,7 @@ const sendManualNotification = async (req, res) => {
     }
 };
 
+// ================= 5. TEST REMINDER NOW =================
 const testReminderNow = async (req, res) => {
     try {
         const settingsRes = await pool.query('SELECT * FROM system_settings WHERE id = 1');
@@ -223,10 +249,12 @@ const testReminderNow = async (req, res) => {
     }
 };
 
+// ================= 6. GET ADMIN USERS LIST =================
 const getAdminUsersList = async (req, res) => {
     try {
         const query = `
             SELECT u.id, u.username, u.email, u.preferred_language, u.silent_mode,
+                   COALESCE(u.email_digest_enabled, true) as email_digest_enabled,
                    CASE WHEN p.id IS NOT NULL THEN TRUE ELSE FALSE END as has_notifications
             FROM users u
             LEFT JOIN push_subscriptions p ON u.id = p.user_id
@@ -240,6 +268,7 @@ const getAdminUsersList = async (req, res) => {
     }
 };
 
+// ================= 7. CREATE CUSTOM AUTOMATION =================
 const createCustomAutomation = async (req, res) => {
     try {
         const { title, message_en, message_te, frequency } = req.body;
